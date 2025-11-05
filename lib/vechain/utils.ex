@@ -81,8 +81,68 @@ defmodule VeChain.Utils do
     end
   end
 
+  @doc """
+  Decodes hex to binary, returns nil if input is nil.
+
+  ## Examples
+
+      iex> VeChain.Utils.maybe_hex_decode(nil)
+      nil
+
+      iex> VeChain.Utils.maybe_hex_decode("0x1234")
+      <<0x12, 0x34>>
+  """
+  @spec maybe_hex_decode(String.t() | nil) :: binary() | nil
   def maybe_hex_decode(nil), do: nil
   def maybe_hex_decode(hex), do: hex_decode!(hex)
+
+  @doc """
+  Converts an address to binary format, returns nil if input is nil.
+
+  This is a convenience wrapper around `address_to_binary/1` that handles
+  nullable addresses and unwraps the result tuple.
+
+  ## Examples
+
+      iex> VeChain.Utils.maybe_address_to_binary(nil)
+      nil
+
+      iex> VeChain.Utils.maybe_address_to_binary("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed")
+      <<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>
+  """
+  @spec maybe_address_to_binary(binary() | nil) :: <<_::160>> | nil | no_return()
+  def maybe_address_to_binary(nil), do: nil
+
+  def maybe_address_to_binary(address) do
+    case address_to_binary(address) do
+      {:ok, binary} -> binary
+      {:error, reason} -> raise ArgumentError, "Invalid address: #{reason}"
+    end
+  end
+
+  @doc """
+  Decodes a hex-encoded number to an integer.
+
+  VeChain API often returns numbers as hex strings (e.g., "0xa" for 10).
+  This function converts them back to integers.
+
+  ## Examples
+
+      iex> VeChain.Utils.hex_to_integer("0xa")
+      10
+
+      iex> VeChain.Utils.hex_to_integer("0x64")
+      100
+
+      iex> VeChain.Utils.hex_to_integer("0x0")
+      0
+  """
+  @spec hex_to_integer(String.t()) :: non_neg_integer()
+  def hex_to_integer(hex_string) do
+    hex_string
+    |> hex_decode!()
+    |> :binary.decode_unsigned(:big)
+  end
 
   @doc """
   Converts an address to internal binary format.
@@ -103,17 +163,19 @@ defmodule VeChain.Utils do
 
   ## Examples
 
-      iex> VeChain.Utils.to_binary("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed")
+      iex> VeChain.Utils.address_to_binary("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed")
       {:ok, <<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>}
 
-      iex> VeChain.Utils.to_binary(<<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>)
+      iex> VeChain.Utils.address_to_binary(<<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>)
       {:ok, <<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>}
 
-      iex> VeChain.Utils.to_binary("invalid")
+      iex> VeChain.Utils.address_to_binary("invalid")
       {:error, "Invalid address format"}
   """
-  @spec to_binary(binary()) :: {:ok, <<_::160>>} | {:error, String.t()}
-  def to_binary(address) when is_binary(address) do
+  @spec address_to_binary(binary() | nil) :: {:ok, <<_::160>>} | {:error, String.t()} | nil
+  def address_to_binary(nil), do: nil
+
+  def address_to_binary(address) when is_binary(address) do
     case address do
       # Already binary (20 bytes)
       <<_::binary-size(20)>> ->
@@ -135,6 +197,33 @@ defmodule VeChain.Utils do
 
       _ ->
         {:error, "Invalid address format"}
+    end
+  end
+
+  @doc """
+  Same as `address_to_binary/1` but raises on error.
+
+  ## Parameters
+
+    * `address` - Address in various formats
+
+  ## Returns
+
+    * `binary` - 20-byte address binary
+
+  ## Examples
+
+      iex> VeChain.Utils.address_to_binary!("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed")
+      <<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>
+
+      iex> VeChain.Utils.address_to_binary!(<<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>)
+      <<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>
+  """
+  @spec address_to_binary!(binary()) :: <<_::160>> | no_return()
+  def address_to_binary!(address) do
+    case address_to_binary(address) do
+      {:ok, binary} -> binary
+      {:error, reason} -> raise ArgumentError, "Invalid address: #{reason}"
     end
   end
 
@@ -161,7 +250,7 @@ defmodule VeChain.Utils do
   """
   @spec to_hex(binary()) :: {:ok, String.t()} | {:error, String.t()}
   def to_hex(address) do
-    case to_binary(address) do
+    case address_to_binary(address) do
       {:ok, bin} ->
         hex = Base.encode16(bin, case: :lower)
         {:ok, "0x" <> hex}
@@ -287,7 +376,7 @@ defmodule VeChain.Utils do
   """
   @spec valid_address?(binary()) :: boolean()
   def valid_address?(address) do
-    case to_binary(address) do
+    case address_to_binary(address) do
       {:ok, _} -> true
       {:error, _} -> false
     end
@@ -567,36 +656,6 @@ defmodule VeChain.Utils do
   defp decode_hex_hash(_), do: {:error, "Invalid hash format"}
 
   # ========================================
-  # Convenience Macros/Aliases
-  # ========================================
-
-  @doc """
-  Convenience function to convert VET amount.
-
-  Same as `vet_to_wei/1` but with shorter name for use in code.
-
-  ## Examples
-
-      iex> VeChain.Utils.vet(10)
-      10_000_000_000_000_000_000
-  """
-  @spec vet(number()) :: non_neg_integer()
-  def vet(amount), do: vet_to_wei(amount)
-
-  @doc """
-  Convenience function to convert VTHO amount.
-
-  Same as `vtho_to_wei/1` but with shorter name for use in code.
-
-  ## Examples
-
-      iex> VeChain.Utils.vtho(100)
-      100_000_000_000_000_000_000
-  """
-  @spec vtho(number()) :: non_neg_integer()
-  def vtho(amount), do: vtho_to_wei(amount)
-
-  # ========================================
   # Aliases for Handoff Spec Compatibility
   # ========================================
 
@@ -611,7 +670,7 @@ defmodule VeChain.Utils do
       {:ok, <<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>}
   """
   @spec decode_address(String.t()) :: {:ok, binary()} | {:error, String.t()}
-  def decode_address(address), do: to_binary(address)
+  def decode_address(address), do: address_to_binary(address)
 
   @doc """
   Alias for `to_binary/1` that raises on error.
@@ -625,7 +684,7 @@ defmodule VeChain.Utils do
   """
   @spec decode_address!(String.t()) :: binary()
   def decode_address!(address) do
-    case to_binary(address) do
+    case address_to_binary(address) do
       {:ok, binary} -> binary
       {:error, reason} -> raise ArgumentError, "Invalid address: #{reason}"
     end
@@ -681,7 +740,7 @@ defmodule VeChain.Utils do
   """
   @spec normalize_address(String.t() | binary()) :: binary()
   def normalize_address(address) do
-    case to_binary(address) do
+    case address_to_binary(address) do
       {:ok, binary} -> binary
       {:error, reason} -> raise ArgumentError, "Invalid address: #{reason}"
     end
@@ -711,6 +770,10 @@ defmodule VeChain.Utils do
   @spec format_transaction_id(binary()) :: String.t()
   def format_transaction_id(<<_::binary-size(32)>> = tx_id) do
     encode_hex(tx_id)
+  end
+
+  def hash_to_binary("0x" <> hex) when byte_size(hex) == 64 do
+    Base.decode16!(hex, case: :mixed)
   end
 
   @doc """
