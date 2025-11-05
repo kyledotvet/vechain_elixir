@@ -37,7 +37,7 @@ defmodule VeChain.Network do
     %__MODULE__{
       name: :mainnet,
       chain_tag: 0x4A,
-      default_node: "https://mainnet.veblocks.net"
+      default_node: "https://sync-mainnet.vechain.org"
     }
   end
 
@@ -45,7 +45,7 @@ defmodule VeChain.Network do
     %__MODULE__{
       name: :testnet,
       chain_tag: 0x27,
-      default_node: "https://testnet.veblocks.net"
+      default_node: "https://sync-testnet.vechain.org"
     }
   end
 
