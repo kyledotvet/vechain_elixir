@@ -2,8 +2,8 @@ defmodule VeChain.Block do
   @moduledoc """
   Represents a VeChain block with its associated fields.
   """
-
   alias VeChain.Types
+  alias VeChain.Utils
 
   defstruct [
     :number,
@@ -48,6 +48,50 @@ defmodule VeChain.Block do
           is_finalized: boolean(),
           transactions: [Types.t_hash()]
         }
+
+  def cast(%{
+        "baseFeePerGas" => base_fee_per_gas,
+        "beneficiary" => beneficiary,
+        "com" => com,
+        "gasLimit" => gas_limit,
+        "gasUsed" => gas_used,
+        "id" => id,
+        "isFinalized" => is_finalized,
+        "isTrunk" => is_trunk,
+        "number" => number,
+        "parentID" => parent_id,
+        "receiptsRoot" => receipts_root,
+        "signer" => signer,
+        "size" => size,
+        "stateRoot" => state_root,
+        "timestamp" => timestamp,
+        "totalScore" => total_score,
+        "transactions" => transactions,
+        "txsFeatures" => txs_features,
+        "txsRoot" => txs_root
+      }) do
+    %__MODULE__{
+      number: number,
+      id: Utils.hex_decode!(id),
+      size: size,
+      parent_id: Utils.hex_decode!(parent_id),
+      timestamp: DateTime.from_unix!(timestamp),
+      gas_limit: gas_limit,
+      beneficiary: Utils.hex_decode!(beneficiary),
+      gas_used: gas_used,
+      base_fee_per_gas: Utils.hex_decode!(base_fee_per_gas),
+      total_score: total_score,
+      txs_root: Utils.hex_decode!(txs_root),
+      txs_features: txs_features,
+      state_root: Utils.hex_decode!(state_root),
+      receipts_root: Utils.hex_decode!(receipts_root),
+      com: com,
+      signer: Utils.hex_decode!(signer),
+      is_trunk: is_trunk,
+      is_finalized: is_finalized,
+      transactions: transactions
+    }
+  end
 
   defimpl Inspect do
     alias VeChain.Utils
