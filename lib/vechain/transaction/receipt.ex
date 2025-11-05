@@ -21,9 +21,9 @@ defmodule VeChain.Transaction.Receipt do
           gas_used: non_neg_integer(),
           meta: VeChain.Transaction.Receipt.Meta.t(),
           outputs: [VeChain.Transaction.Output.t()],
-          paid: non_neg_integer(),
+          paid: binary(),
           reverted: boolean(),
-          reward: non_neg_integer()
+          reward: binary()
         }
 
   def cast(%{
@@ -36,10 +36,12 @@ defmodule VeChain.Transaction.Receipt do
         "reward" => reward
       }) do
     %__MODULE__{
-      gas_payer: Utils.hex_decode!(gas_payer),
+      # gas_payer is required (address that paid for gas)
+      gas_payer: Utils.address_to_binary!(gas_payer),
       gas_used: gas_used,
       meta: Meta.cast(meta),
       outputs: Output.cast_all(outputs),
+      # paid and reward are hex strings decoded to binary (amount of VTHO in wei)
       paid: Utils.hex_decode!(paid),
       reverted: reverted,
       reward: Utils.hex_decode!(reward)

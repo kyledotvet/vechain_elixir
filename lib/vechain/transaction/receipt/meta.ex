@@ -26,11 +26,14 @@ defmodule VeChain.Transaction.Receipt.Meta do
         "txOrigin" => tx_origin
       }) do
     %__MODULE__{
+      # block_id is required (32-byte hash)
       block_id: Utils.hex_decode!(block_id),
       block_number: block_number,
       block_timestamp: block_timestamp,
+      # tx_id is required (32-byte transaction hash)
       tx_id: Utils.hex_decode!(tx_id),
-      tx_origin: Utils.hex_decode!(tx_origin)
+      # tx_origin is required (20-byte sender address)
+      tx_origin: Utils.address_to_binary!(tx_origin)
     }
   end
 

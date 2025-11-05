@@ -26,8 +26,11 @@ defmodule VeChain.Transaction.Event do
         "data" => data
       }) do
     %__MODULE__{
-      address: Utils.hex_decode!(address),
+      # address is required (contract address that emitted the event)
+      address: Utils.address_to_binary!(address),
+      # topics are 32-byte hashes (event signature + indexed parameters)
       topics: Enum.map(topics, &Utils.hex_decode!/1),
+      # data is the non-indexed event parameters
       data: Utils.hex_decode!(data)
     }
   end

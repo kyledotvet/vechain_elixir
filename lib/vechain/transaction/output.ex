@@ -28,7 +28,8 @@ defmodule VeChain.Transaction.Output do
         "transfers" => transfers
       }) do
     %__MODULE__{
-      contract_address: VeChain.Utils.maybe_hex_decode(contract_address),
+      # contract_address is nullable (only present for contract creation clauses)
+      contract_address: Utils.maybe_address_to_binary(contract_address),
       events: Event.cast_all(events),
       transfers: Transfer.cast_all(transfers)
     }

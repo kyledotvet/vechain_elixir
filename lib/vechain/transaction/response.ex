@@ -32,7 +32,7 @@ defmodule VeChain.Transaction.Response do
           gas: non_neg_integer(),
           gas_price_coef: non_neg_integer(),
           id: Types.t_hash(),
-          meta: VeChain.Transaction.Meta.t(),
+          meta: Meta.t(),
           nonce: binary(),
           origin: Types.t_address(),
           size: non_neg_integer(),
@@ -59,15 +59,19 @@ defmodule VeChain.Transaction.Response do
       block_ref: Utils.hex_decode!(block_ref),
       chain_tag: chain_tag,
       clauses: Clause.cast_all(clauses),
-      delegator: Utils.hex_decode!(delegator),
+      # delegator is nullable (used in fee delegation)
+      delegator: Utils.maybe_address_to_binary(delegator),
+      # depends_on is nullable (used for transaction dependencies)
       depends_on: Utils.maybe_hex_decode(depends_on),
       expiration: expiration,
       gas: gas,
       gas_price_coef: gas_price_coef,
+      # id is required (transaction hash)
       id: Utils.hex_decode!(id),
       meta: Meta.cast(meta),
       nonce: Utils.hex_decode!(nonce),
-      origin: Utils.hex_decode!(origin),
+      # origin is required (sender address)
+      origin: Utils.address_to_binary!(origin),
       size: tx_size,
       type: tx_type
     }

@@ -26,8 +26,10 @@ defmodule VeChain.Transaction.Transfer do
         "amount" => amount
       }) do
     %__MODULE__{
-      sender: Utils.hex_decode!(sender),
-      recipient: Utils.hex_decode!(recipient),
+      # sender is required (20-byte address)
+      sender: Utils.address_to_binary!(sender),
+      # recipient is required (20-byte address)
+      recipient: Utils.address_to_binary!(recipient),
       amount: amount
     }
   end

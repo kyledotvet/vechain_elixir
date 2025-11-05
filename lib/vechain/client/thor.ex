@@ -24,11 +24,13 @@ defmodule VeChain.Client.Thor do
       {:ok, receipt} = Thor.get_transaction_receipt(client, tx_id)
   """
 
+  alias VeChain.Block
   alias VeChain.Network
+  alias VeChain.Types
+  alias VeChain.Utils
+  alias VeChain.Transaction
 
   @type t :: Req.Request.t()
-  @type block_id :: non_neg_integer() | String.t()
-  @type tx_id :: String.t()
 
   @doc """
   Creates a new Thor API client.
@@ -129,13 +131,16 @@ defmodule VeChain.Client.Thor do
       iex> block["number"] == 12345
       true
   """
-  @spec get_block(t(), block_id()) :: {:ok, map()} | {:error, term()}
+  @spec get_block(t(), String.t() | non_neg_integer()) :: {:ok, map()} | {:error, term()}
   def get_block(client, id) do
-    path = "/blocks/#{normalize_id(id)}"
-
-    case Req.get(client, url: path) do
+    client
+    |> Req.get(
+      url: "/blocks/:block_id",
+      path_params: [block_id: id]
+    )
+    |> case do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, body}
+        {:ok, Block.cast(body)}
 
       {:ok, %{status: status, body: body}} ->
         {:error, {status, body}}
@@ -163,7 +168,7 @@ defmodule VeChain.Client.Thor do
       iex> is_integer(block["number"])
       true
   """
-  @spec get_block!(t(), block_id()) :: map()
+  @spec get_block!(t(), String.t()) :: map()
   def get_block!(client, id) do
     case get_block(client, id) do
       {:ok, block} -> block
@@ -186,17 +191,16 @@ defmodule VeChain.Client.Thor do
 
   ## Examples
 
-      iex> encoded = Transaction.encode(signed_tx)
-      iex> {:ok, response} = Thor.post_transaction(client, encoded)
-      iex> String.starts_with?(response["id"], "0x")
-      true
+      iex> {:ok, response} = Thor.post_transaction(client, "0x0123456789abcdef...")
   """
   @spec post_transaction(t(), binary() | String.t()) :: {:ok, map()} | {:error, term()}
-  def post_transaction(client, raw_transaction) do
-    raw_hex = encode_hex(raw_transaction)
-    body = %{"raw" => raw_hex}
-
-    case Req.post(client, url: "/transactions", json: body) do
+  def post_transaction(client, encoded_transaction) do
+    client
+    |> Req.post(
+      url: "/transactions",
+      json: %{"raw" => encoded_transaction}
+    )
+    |> case do
       {:ok, %{status: 200, body: body}} ->
         {:ok, body}
 
@@ -236,6 +240,61 @@ defmodule VeChain.Client.Thor do
   end
 
   @doc """
+  Gets a transaction by ID.
+
+  ## Parameters
+
+    * `client` - Thor client
+    * `tx_id` - Transaction ID (hex string)
+
+  ## Returns
+
+    * `{:ok, transaction}` - Transaction data
+    * `{:ok, nil}` - Transaction not found
+    * `{:error, reason}` - Error details
+
+  ## Examples
+
+      iex> {:ok, tx} = Thor.get_transaction(client, "0xabcd...")
+      iex> is_map(tx)
+      true
+  """
+  @spec get_transaction(t(), Types.t_hash()) :: {:ok, map() | nil} | {:error, term()}
+  def get_transaction(client, tx_id) do
+    client
+    |> Req.get(
+      url: "/transactions/:tx_id",
+      path_params: [tx_id: normalize_tx_id(tx_id)]
+    )
+    |> case do
+      {:ok, %{status: 200, body: body}} when is_map(body) ->
+        {:ok, Transaction.Response.cast(body)}
+
+      {:ok, %{status: 404}} ->
+        {:ok, nil}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {status, body}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Gets a transaction by ID. Raises on error.
+
+  Returns `nil` if transaction not found.
+  """
+  @spec get_transaction!(t(), String.t()) :: map() | nil
+  def get_transaction!(client, tx_id) do
+    case get_transaction(client, tx_id) do
+      {:ok, tx} -> tx
+      {:error, reason} -> raise "Failed to get transaction: #{inspect(reason)}"
+    end
+  end
+
+  @doc """
   Gets a transaction receipt.
 
   Returns `nil` if the transaction is pending (not yet included in a block).
@@ -260,16 +319,19 @@ defmodule VeChain.Client.Thor do
       iex> {:ok, nil} = Thor.get_transaction_receipt(client, "0xpending...")
       iex> # Transaction not yet mined
   """
-  @spec get_transaction_receipt(t(), tx_id()) :: {:ok, map() | nil} | {:error, term()}
+  @spec get_transaction_receipt(t(), Types.t_hash()) :: {:ok, map() | nil} | {:error, term()}
   def get_transaction_receipt(client, tx_id) do
-    path = "/transactions/#{normalize_tx_id(tx_id)}/receipt"
-
-    case Req.get(client, url: path) do
+    client
+    |> Req.get(
+      url: "/transactions/:tx_id/receipt",
+      path_params: [tx_id: normalize_tx_id(tx_id)]
+    )
+    |> case do
       {:ok, %{status: 200, body: nil}} ->
         {:ok, nil}
 
       {:ok, %{status: 200, body: body}} when is_map(body) ->
-        {:ok, body}
+        {:ok, Transaction.Receipt.cast(body)}
 
       {:ok, %{status: 404}} ->
         {:ok, nil}
@@ -303,7 +365,7 @@ defmodule VeChain.Client.Thor do
       iex> is_map(receipt)
       true
   """
-  @spec get_transaction_receipt!(t(), tx_id()) :: map() | nil
+  @spec get_transaction_receipt!(t(), String.t()) :: map() | nil
   def get_transaction_receipt!(client, tx_id) do
     case get_transaction_receipt(client, tx_id) do
       {:ok, receipt} -> receipt
@@ -418,12 +480,15 @@ defmodule VeChain.Client.Thor do
       iex> is_binary(account["balance"])
       true
   """
-  @spec get_account(t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec get_account(t(), Types.t_address(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_account(client, address, opts \\ []) do
-    block = Keyword.get(opts, :block, "best")
-    path = "/accounts/#{normalize_address(address)}"
-
-    case Req.get(client, url: path, params: [revision: block]) do
+    client
+    |> Req.get(
+      url: "/accounts/:address",
+      path_params: [address: normalize_address(address)],
+      params: [revision: Keyword.get(opts, :block)]
+    )
+    |> case do
       {:ok, %{status: 200, body: body}} ->
         {:ok, body}
 
@@ -448,69 +513,13 @@ defmodule VeChain.Client.Thor do
     end
   end
 
-  @doc """
-  Gets a transaction by ID.
-
-  ## Parameters
-
-    * `client` - Thor client
-    * `tx_id` - Transaction ID (hex string)
-
-  ## Returns
-
-    * `{:ok, transaction}` - Transaction data
-    * `{:ok, nil}` - Transaction not found
-    * `{:error, reason}` - Error details
-
-  ## Examples
-
-      iex> {:ok, tx} = Thor.get_transaction(client, "0xabcd...")
-      iex> is_map(tx)
-      true
-  """
-  @spec get_transaction(t(), tx_id()) :: {:ok, map() | nil} | {:error, term()}
-  def get_transaction(client, tx_id) do
-    path = "/transactions/#{normalize_tx_id(tx_id)}"
-
-    case Req.get(client, url: path) do
-      {:ok, %{status: 200, body: body}} when is_map(body) ->
-        {:ok, body}
-
-      {:ok, %{status: 404}} ->
-        {:ok, nil}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  @doc """
-  Gets a transaction by ID. Raises on error.
-
-  Returns `nil` if transaction not found.
-  """
-  @spec get_transaction!(t(), tx_id()) :: map() | nil
-  def get_transaction!(client, tx_id) do
-    case get_transaction(client, tx_id) do
-      {:ok, tx} -> tx
-      {:error, reason} -> raise "Failed to get transaction: #{inspect(reason)}"
-    end
-  end
-
   # ========================================
   # Private Helpers
   # ========================================
 
-  # Normalize block ID for URL
-  defp normalize_id(id) when is_integer(id), do: Integer.to_string(id)
-  defp normalize_id(id) when is_binary(id), do: id
-
   # Normalize transaction ID
   defp normalize_tx_id("0x" <> _ = tx_id), do: tx_id
-  defp normalize_tx_id(tx_id) when is_binary(tx_id), do: "0x" <> tx_id
+  defp normalize_tx_id(tx_id) when is_binary(tx_id), do: Utils.hex_encode(tx_id)
 
   # Normalize address for URL (ensures 0x prefix)
   defp normalize_address("0x" <> _ = address), do: address

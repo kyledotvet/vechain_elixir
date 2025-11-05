@@ -90,8 +90,34 @@ defmodule VeChain.Clause do
     data = opts[:data] || <<>>
 
     %__MODULE__{
-      to: normalize_address(to),
+      to: to,
       value: value,
+      data: normalize_data(data)
+    }
+  end
+
+  @doc """
+
+  """
+  @spec cast_all([map()]) :: [t()]
+  def cast_all([]), do: []
+
+  def cast_all([clause | rest]) do
+    [cast(clause) | cast_all(rest)]
+  end
+
+  @doc """
+  Casts a map to a Clause struct.
+  """
+  @spec cast(map()) :: t()
+  def cast(%{
+        "to" => to,
+        "value" => value,
+        "data" => data
+      }) do
+    %__MODULE__{
+      to: Utils.hex_decode!(to),
+      value: Utils.hex_decode!(value),
       data: normalize_data(data)
     }
   end
@@ -118,10 +144,10 @@ defmodule VeChain.Clause do
       iex> Clause.transfer_vet("0x7567...", 1_000_000_000_000_000_000)
       %Clause{to: <<...>>, value: 1_000_000_000_000_000_000, data: <<>>}
   """
-  @spec transfer_vet(String.t() | binary(), non_neg_integer()) :: t()
+  @spec transfer_vet(Types.t_address() | binary(), non_neg_integer()) :: t()
   def transfer_vet(to, amount) when is_integer(amount) and amount >= 0 do
     %__MODULE__{
-      to: normalize_address(to),
+      to: to,
       value: amount,
       data: <<>>
     }
@@ -153,11 +179,12 @@ defmodule VeChain.Clause do
       iex> Clause.call_contract("0xcontractaddr...", VeChain.Utils.vet(1), "0x1234...")
       %Clause{to: <<...>>, value: 1_000_000_000_000_000_000, data: <<...>>}
   """
-  @spec call_contract(String.t() | binary(), non_neg_integer(), String.t() | binary()) :: t()
+  @spec call_contract(Types.t_address() | binary(), non_neg_integer(), String.t() | binary()) ::
+          t()
   def call_contract(to, value \\ 0, data)
       when is_integer(value) and value >= 0 do
     %__MODULE__{
-      to: normalize_address(to),
+      to: to,
       value: value,
       data: normalize_data(data)
     }
@@ -260,18 +287,22 @@ defmodule VeChain.Clause do
     }
   end
 
-  # Private helpers
+  defimpl Inspect do
+    alias VeChain.Utils
 
-  # Normalize address to binary format
-  defp normalize_address(nil), do: nil
-  defp normalize_address(<<_::binary-size(20)>> = addr), do: addr
-
-  defp normalize_address(addr) when is_binary(addr) do
-    case Utils.to_binary(addr) do
-      {:ok, binary} -> binary
-      {:error, _} -> raise ArgumentError, "Invalid address format: #{inspect(addr)}"
+    def inspect(clause, opts) do
+      # Use the default struct inspection with the modified clause
+      %{
+        clause
+        | to: Utils.hex_encode(clause.to),
+          value: Utils.hex_encode(clause.value),
+          data: Utils.hex_encode(clause.data)
+      }
+      |> Inspect.Any.inspect(opts)
     end
   end
+
+  # Private helpers
 
   # Normalize data to binary format
   defp normalize_data(data) when data == "" or data == <<>> or data == "0x", do: <<>>

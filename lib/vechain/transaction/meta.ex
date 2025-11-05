@@ -20,6 +20,7 @@ defmodule VeChain.Transaction.Meta do
         "blockTimestamp" => block_timestamp
       }) do
     %__MODULE__{
+      # block_id is required (32-byte hash)
       block_id: Utils.hex_decode!(block_id),
       block_number: block_number,
       block_timestamp: block_timestamp
