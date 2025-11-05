@@ -17,12 +17,72 @@ defmodule VeChain.Utils do
   Conversions happen at API boundaries using the functions in this module.
   """
 
-  import Bitwise
-  alias VeChain.Crypto.Blake2b
+  alias VeChain.Types
+
+  @spec type_to_atom(Types.tx_type()) :: :dynamic_fee | :legacy
+  def type_to_atom(0), do: :legacy
+  def type_to_atom(81), do: :dynamic_fee
 
   # ========================================
   # Address Utilities
   # ========================================
+
+  @doc """
+  Encode to hex with 0x prefix.
+
+  ## Examples
+
+      iex> VeChain.Utils.hex_encode("VeChain_ex")
+      "0x6574686572735f6578"
+  """
+  @spec hex_encode(binary() | nil, boolean()) :: String.t()
+  def hex_encode(bin, include_prefix \\ true)
+  def hex_encode(nil, _), do: nil
+  def hex_encode(<<0>>, include_prefix), do: if(include_prefix, do: "0x0", else: "0")
+
+  def hex_encode(bin, include_prefix),
+    do: if(include_prefix, do: "0x", else: "") <> Base.encode16(bin, case: :lower)
+
+  @doc """
+  Decode from hex with (or without) 0x prefix.
+
+  ## Examples
+
+      iex> VeChain.Utils.hex_decode("0x6574686572735f6578")
+      {:ok, "VeChain_ex"}
+
+      iex> VeChain.Utils.hex_decode("6574686572735f6578")
+      {:ok, "VeChain_ex"}
+
+      iex> VeChain.Utils.hex_decode("0x686")
+      {:ok, <<6, 134>>}
+  """
+  @spec hex_decode(String.t()) :: {:ok, binary} | :error
+  def hex_decode(<<"0x", encoded::binary>>), do: hex_decode(encoded)
+  def hex_decode(encoded) when rem(byte_size(encoded), 2) == 1, do: hex_decode("0" <> encoded)
+  def hex_decode(encoded), do: Base.decode16(encoded, case: :mixed)
+
+  @doc """
+  Same as `hex_decode/1` but raises on error
+
+  ## Examples
+
+      iex> VeChain.Utils.hex_decode!("0x6574686572735f6578")
+      "VeChain_ex"
+
+      iex> VeChain.Utils.hex_decode!("6574686572735f6578")
+      "VeChain_ex"
+  """
+  @spec hex_decode!(String.t()) :: binary() | no_return()
+  def hex_decode!(encoded) do
+    case hex_decode(encoded) do
+      {:ok, decoded} -> decoded
+      :error -> raise ArgumentError, "Invalid HEX input #{inspect(encoded)}"
+    end
+  end
+
+  def maybe_hex_decode(nil), do: nil
+  def maybe_hex_decode(hex), do: hex_decode!(hex)
 
   @doc """
   Converts an address to internal binary format.
@@ -133,8 +193,8 @@ defmodule VeChain.Utils do
   @spec valid_checksum?(String.t()) :: boolean()
   def valid_checksum?("0x" <> hex_address) when byte_size(hex_address) == 40 do
     # Generate checksummed version and compare
-    case checksum_address("0x" <> String.downcase(hex_address)) do
-      {:ok, checksummed} -> "0x" <> hex_address == checksummed
+    case to_checksum_address("0x" <> String.downcase(hex_address)) do
+      checksummed -> "0x" <> hex_address == checksummed
       _ -> false
     end
   end
@@ -142,59 +202,65 @@ defmodule VeChain.Utils do
   def valid_checksum?(_), do: false
 
   @doc """
-  Generates a checksummed address (EIP-55 style with Blake2b).
+  Will convert an upper or lowercase Ethereum address to a checksum address.
 
-  ## Parameters
-
-    * `address` - Address as binary or hex string
-
-  ## Returns
-
-    * `{:ok, checksummed_address}` - Checksummed hex string
-    * `{:error, reason}` - Invalid address
+  If `chain_id` is specified, ERC-1191 checksum encoding will be used.
+  NOTE: ERC-1191 is generally NOT backwards compatible with ERC-55 encoding
+        (encoding without `chain_id`).
 
   ## Examples
 
-      iex> VeChain.Utils.checksum_address("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed")
-      {:ok, "0x7567d83B7B8D80adDcb281a71D54Fc7B3364FfEd"}
+      iex> VeChain.Utils.to_checksum_address("0xc1912fee45d61c87cc5ea59dae31190fffff232d")
+      "0xc1912fEE45d61C87Cc5EA59DaE31190FFFFf232d"
+
+      iex> VeChain.Utils.to_checksum_address("0XC1912FEE45D61C87CC5EA59DAE31190FFFFF232D")
+      "0xc1912fEE45d61C87Cc5EA59DaE31190FFFFf232d"
+
+      iex> VeChain.Utils.to_checksum_address("0xde709f2102306220921060314715629080e2fb77", 31)
+      "0xDE709F2102306220921060314715629080e2Fb77"
+
+      iex> VeChain.Utils.to_checksum_address("0XDE709F2102306220921060314715629080e2Fb77", 30)
+      "0xDe709F2102306220921060314715629080e2FB77"
   """
-  @spec checksum_address(binary()) :: {:ok, String.t()} | {:error, String.t()}
-  def checksum_address(address) do
-    with {:ok, bin} <- to_binary(address) do
-      # Convert to lowercase hex without prefix
-      hex = Base.encode16(bin, case: :lower)
+  @spec to_checksum_address(VeChain.Types.t_address() | <<_::320>>, pos_integer() | nil) ::
+          VeChain.Types.t_address()
+  def to_checksum_address(address, chain_id \\ nil)
 
-      # Hash the lowercase hex
-      hash = Blake2b.hash(hex)
+  def to_checksum_address(<<"0x", address::binary-40>>, chain_id),
+    do: to_checksum_address(address, chain_id)
 
-      # Apply checksum based on hash nibbles
-      checksummed =
-        hex
-        |> String.graphemes()
-        |> Enum.with_index()
-        |> Enum.map(fn {char, idx} ->
-          # Get the corresponding byte from hash
-          hash_byte = :binary.at(hash, div(idx, 2))
+  def to_checksum_address(<<"0X", address::binary-40>>, chain_id),
+    do: to_checksum_address(address, chain_id)
 
-          # Get the nibble (4 bits)
-          nibble =
-            if rem(idx, 2) == 0 do
-              hash_byte >>> 4
-            else
-              hash_byte &&& 0x0F
-            end
+  def to_checksum_address(<<address_bin::binary-20>>, chain_id),
+    do: hex_encode(address_bin, false) |> to_checksum_address(chain_id)
 
-          # Uppercase if nibble >= 8
-          if nibble >= 8 do
-            String.upcase(char)
-          else
-            char
-          end
-        end)
-        |> Enum.join()
+  def to_checksum_address(address, nil), do: calculate_checksum_address(address, address)
 
-      {:ok, "0x" <> checksummed}
-    end
+  def to_checksum_address(address, chain_id) when is_integer(chain_id),
+    do: calculate_checksum_address(address, "#{chain_id}0x#{address}")
+
+  defp calculate_checksum_address(address, hash_input) do
+    address = String.downcase(address)
+
+    hashed_address =
+      hash_input
+      |> String.downcase()
+      |> ExKeccak.hash_256()
+      |> Base.encode16(case: :lower)
+
+    checksum_address =
+      address
+      |> String.to_charlist()
+      |> Enum.zip(String.to_charlist(hashed_address))
+      |> Enum.map(fn
+        {c, _} when c < ?a -> c
+        {c, h} when h > ?7 -> :string.to_upper(c)
+        {c, _} -> c
+      end)
+      |> to_string()
+
+    "0x#{checksum_address}"
   end
 
   @doc """
@@ -699,7 +765,8 @@ defmodule VeChain.Utils do
       "0x27"
   """
   @spec format_chain_tag(byte()) :: String.t()
-  def format_chain_tag(chain_tag) when is_integer(chain_tag) and chain_tag >= 0 and chain_tag <= 255 do
+  def format_chain_tag(chain_tag)
+      when is_integer(chain_tag) and chain_tag >= 0 and chain_tag <= 255 do
     encode_hex(<<chain_tag>>)
   end
 end
