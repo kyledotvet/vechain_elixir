@@ -6,7 +6,7 @@ defmodule VeChain.RLP do
   This module provides a clean interface around the `ex_rlp` library with
   VeChain-specific conveniences.
 
-  ## Examples
+  ## Basic Usage
 
       # Encode simple values
       iex> VeChain.RLP.encode(1)
@@ -25,6 +25,23 @@ defmodule VeChain.RLP do
 
       iex> VeChain.RLP.decode(<<133, 104, 101, 108, 108, 111>>)
       "hello"
+
+  ## Profile-Based Encoding
+
+  For complex data structures like VeChain transactions, use the profile-based
+  encoding system via `VeChain.RLP.Profiler`:
+
+      profile = %VeChain.RLP.Profile{
+        name: "transaction",
+        kind: [
+          %VeChain.RLP.Profile{name: "chainTag", kind: VeChain.RLP.Kind.Numeric},
+          %VeChain.RLP.Profile{name: "blockRef", kind: VeChain.RLP.Kind.CompactFixedHexBlob, opts: [bytes: 8]}
+        ]
+      }
+
+      tx = %{"chainTag" => 1, "blockRef" => "0x00000000aabbccdd"}
+      {:ok, profiler} = VeChain.RLP.Profiler.of_object(tx, profile)
+      encoded = profiler.encoded
 
   ## RLP Encoding Rules
 
@@ -45,6 +62,13 @@ defmodule VeChain.RLP do
   - Lists: Recursively encode each element
   - Empty values: Encoded as 0x80
   """
+
+  defstruct [:encoded, :decoded]
+
+  @type t :: %__MODULE__{
+          encoded: binary(),
+          decoded: ExRLP.t()
+        }
 
   @doc """
   Encodes a value using RLP encoding.
@@ -339,4 +363,154 @@ defmodule VeChain.RLP do
   defp normalize_integer_field(value) when is_binary(value) do
     :binary.decode_unsigned(value, :big)
   end
+
+  @doc """
+  Creates an RLP struct from raw data.
+
+  ## Parameters
+
+  - `data` - The data to encode (integer, binary, list, etc.)
+
+  ## Returns
+
+  RLP struct with both encoded and decoded representations.
+
+  ## Examples
+
+      iex> rlp = VeChain.RLP.of(1000)
+      iex> is_binary(rlp.encoded)
+      true
+  """
+  @spec of(ExRLP.t()) :: t()
+  def of(data) do
+    %__MODULE__{
+      decoded: data,
+      encoded: ExRLP.encode(data)
+    }
+  end
+
+  @doc """
+  Creates an RLP struct from encoded bytes.
+
+  ## Parameters
+
+  - `encoded` - The RLP-encoded binary
+
+  ## Returns
+
+  - `{:ok, rlp}` - RLP struct with decoded data
+  - `{:error, reason}` - Decoding error
+
+  ## Examples
+
+      iex> encoded = VeChain.RLP.encode(1000)
+      iex> {:ok, rlp} = VeChain.RLP.of_encoded(encoded)
+      iex> rlp.decoded
+      <<3, 232>>
+  """
+  @spec of_encoded(binary()) :: {:ok, t()} | {:error, term()}
+  def of_encoded(encoded) when is_binary(encoded) do
+    case ExRLP.decode(encoded) do
+      {:ok, decoded} ->
+        {:ok, %__MODULE__{encoded: encoded, decoded: decoded}}
+
+      decoded when not is_tuple(decoded) ->
+        {:ok, %__MODULE__{encoded: encoded, decoded: decoded}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Converts RLP to hexadecimal string.
+
+  ## Parameters
+
+  - `rlp` - RLP struct
+
+  ## Returns
+
+  Hex string with "0x" prefix.
+
+  ## Examples
+
+      iex> rlp = VeChain.RLP.of([1, 2, 3])
+      iex> hex = VeChain.RLP.to_hex(rlp)
+      iex> String.starts_with?(hex, "0x")
+      true
+  """
+  @spec to_hex(t()) :: String.t()
+  def to_hex(%__MODULE__{encoded: encoded}) do
+    "0x" <> Base.encode16(encoded, case: :lower)
+  end
+
+  @doc """
+  Converts decoded RLP to integer (if applicable).
+
+  ## Parameters
+
+  - `rlp` - RLP struct
+
+  ## Returns
+
+  - Integer value if decoded data is a binary
+  - `nil` if not applicable
+
+  ## Examples
+
+      iex> rlp = VeChain.RLP.of(1000)
+      iex> {:ok, rlp_struct} = VeChain.RLP.of_encoded(rlp.encoded)
+      iex> VeChain.RLP.to_number(rlp_struct)
+      1000
+  """
+  @spec to_number(t()) :: integer() | nil
+  def to_number(%__MODULE__{decoded: decoded}) when is_binary(decoded) do
+    if byte_size(decoded) == 0 do
+      0
+    else
+      :binary.decode_unsigned(decoded, :big)
+    end
+  end
+
+  def to_number(_), do: nil
+
+  @doc """
+  Converts decoded RLP to bigint (alias for to_number).
+
+  ## Parameters
+
+  - `rlp` - RLP struct
+
+  ## Returns
+
+  Integer value or nil.
+  """
+  @spec to_bigint(t()) :: integer() | nil
+  def to_bigint(rlp), do: to_number(rlp)
+
+  @doc """
+  Converts decoded RLP to bytes.
+
+  ## Parameters
+
+  - `rlp` - RLP struct
+
+  ## Returns
+
+  Binary data.
+
+  ## Examples
+
+      iex> rlp = VeChain.RLP.of("hello")
+      iex> {:ok, rlp_struct} = VeChain.RLP.of_encoded(rlp.encoded)
+      iex> VeChain.RLP.to_bytes(rlp_struct)
+      "hello"
+  """
+  @spec to_bytes(t()) :: binary()
+  def to_bytes(%__MODULE__{decoded: decoded}) when is_binary(decoded) do
+    decoded
+  end
+
+  def to_bytes(%__MODULE__{encoded: encoded}), do: encoded
 end
