@@ -1,7 +1,27 @@
 defmodule VeChain.Wallet.MnemonicTest do
+  @moduledoc """
+  Tests for Mnemonic functionality including BIP39 mnemonic generation, validation, and key derivation.
+  """
   use ExUnit.Case, async: true
 
-  alias VeChain.Wallet.Mnemonic
+  alias VeChain.Wallet.{Mnemonic, HD}
+  alias VeChain.Crypto.{Address, Secp256k1}
+
+  # Test fixture mnemonic phrase
+  @test_words [
+    "ignore",
+    "empty",
+    "bird",
+    "silly",
+    "journey",
+    "junior",
+    "ripple",
+    "have",
+    "guard",
+    "waste",
+    "between",
+    "tenant"
+  ]
 
   describe "generate/1" do
     test "generates 12-word mnemonic by default" do
@@ -217,6 +237,206 @@ defmodule VeChain.Wallet.MnemonicTest do
       seed = Mnemonic.to_seed!(mnemonic)
       assert is_binary(seed)
       assert byte_size(seed) == 64
+    end
+  end
+
+  describe "to_private_key/3" do
+    test "derives private key from default BIP44 VET derivation path" do
+      # Expected private key for test mnemonic at default path
+      expected =
+        "27196338e7d0b5e7bf1be1c0327c53a244a18ef0b102976980e341500f492425"
+        |> Base.decode16!(case: :lower)
+
+      {:ok, actual} = Mnemonic.to_private_key(@test_words)
+
+      assert actual == expected
+    end
+
+    test "derives consistent private keys using index vs full path" do
+      # Verify child derivation consistency across derivation methods
+      {:ok, master} = HD.from_mnemonic(@test_words, HD.vet_derivation_path())
+
+      for i <- 0..9 do
+        # Derive using index
+        {:ok, child_from_index} = HD.derive_child(master, i)
+
+        # Derive using full path
+        path = "#{HD.vet_derivation_path()}/#{i}"
+        {:ok, child_from_path} = HD.from_mnemonic(@test_words, path)
+
+        # Both methods should give same result
+        assert child_from_index.private_key == child_from_path.private_key
+
+        # Direct private key derivation should also match
+        {:ok, private_key} = Mnemonic.to_private_key(@test_words, path)
+        assert child_from_path.private_key == private_key
+      end
+    end
+
+    test "derives from custom m/0/1 derivation path" do
+      # Expected private key for test mnemonic at custom path
+      path = "m/0/1"
+
+      expected =
+        "731311cb9643cf4cf7a3a051fe02ae56cf6887708d1f2d3b07e1b4bebeb742a8"
+        |> Base.decode16!(case: :lower)
+
+      {:ok, actual} = Mnemonic.to_private_key(@test_words, path)
+
+      assert actual == expected
+    end
+
+    test "derives from deep custom m/0/1/4/2/4/3 derivation path" do
+      # Expected private key for test mnemonic at deep custom path
+      path = "m/0/1/4/2/4/3"
+
+      expected =
+        "4d61a740e8e9964284c96e92e5e95e05eb732d61a5c3fb1557ca99398f041ba0"
+        |> Base.decode16!(case: :lower)
+
+      {:ok, actual} = Mnemonic.to_private_key(@test_words, path)
+
+      assert actual == expected
+    end
+
+    test "returns error for invalid derivation path with non-numeric segment" do
+      illegal_path = "m/0/1/4/2/4/h"
+      assert {:error, :invalid_path} = Mnemonic.to_private_key(@test_words, illegal_path)
+    end
+
+    test "generates valid private keys and addresses for all mnemonic lengths" do
+      # Verify all supported mnemonic lengths produce valid keys and addresses
+      [12, 15, 18, 21, 24]
+      |> Enum.each(fn length ->
+        # Generate mnemonic words of expected length
+        {:ok, words} = Mnemonic.generate(length)
+        assert length(words) == length
+
+        # Validate mnemonic words
+        assert Mnemonic.valid?(words) == true
+
+        # Derive private key from mnemonic words
+        {:ok, private_key} = Mnemonic.to_private_key(words)
+        assert byte_size(private_key) == 32
+        assert Secp256k1.valid_private_key?(private_key)
+
+        # Derive address from mnemonic words
+        address_bytes = Address.from_private_key(private_key)
+        address = "0x" <> Base.encode16(address_bytes, case: :lower)
+        assert String.length(address) == 42
+        assert Address.valid?(address)
+      end)
+    end
+
+    test "returns error for invalid mnemonic" do
+      assert Mnemonic.valid?(["hello", "world"]) == false
+      assert {:error, :invalid_mnemonic} = Mnemonic.to_private_key(["hello", "world"])
+    end
+
+    test "returns error for invalid path" do
+      assert {:error, :invalid_path} = Mnemonic.to_private_key(@test_words, "invalid")
+      assert {:error, :invalid_path} = Mnemonic.to_private_key(@test_words, "m/-1")
+      assert {:error, :invalid_path} = Mnemonic.to_private_key(@test_words, "m/a/b")
+    end
+
+    test "returns error for corrupted checksum" do
+      {:ok, words} = Mnemonic.generate()
+      # Corrupt last word
+      bad_words = List.replace_at(words, -1, "abandon")
+      assert Mnemonic.valid?(bad_words) == false
+      assert {:error, _} = Mnemonic.to_private_key(bad_words)
+    end
+  end
+
+  describe "Address derivation from mnemonic" do
+    test "derives valid addresses from mnemonic at different indices" do
+      addresses =
+        for i <- 0..9 do
+          path = "#{HD.vet_derivation_path()}/#{i}"
+          {:ok, private_key} = Mnemonic.to_private_key(@test_words, path)
+          address_bytes = Address.from_private_key(private_key)
+          "0x" <> Base.encode16(address_bytes, case: :lower)
+        end
+
+      # All addresses should be unique
+      assert length(Enum.uniq(addresses)) == 10
+
+      # All addresses should be valid
+      Enum.each(addresses, fn addr ->
+        assert String.starts_with?(addr, "0x")
+        assert String.length(addr) == 42
+        assert Address.valid?(addr)
+      end)
+    end
+
+    test "same mnemonic always generates same addresses" do
+      path = "#{HD.vet_derivation_path()}/0"
+
+      {:ok, private_key1} = Mnemonic.to_private_key(@test_words, path)
+      address_bytes1 = Address.from_private_key(private_key1)
+      address1 = "0x" <> Base.encode16(address_bytes1, case: :lower)
+
+      {:ok, private_key2} = Mnemonic.to_private_key(@test_words, path)
+      address_bytes2 = Address.from_private_key(private_key2)
+      address2 = "0x" <> Base.encode16(address_bytes2, case: :lower)
+
+      assert address1 == address2
+    end
+  end
+
+  describe "Complete workflows" do
+    test "derives address from generated mnemonic through full key derivation" do
+      # Generate new mnemonic
+      {:ok, words} = Mnemonic.generate()
+      assert length(words) == 12
+      assert Mnemonic.valid?(words)
+
+      # Convert to seed
+      {:ok, seed} = Mnemonic.to_seed(words)
+      assert byte_size(seed) == 64
+
+      # Create master key
+      {:ok, master_key} = HD.master_key_from_seed(seed)
+      assert byte_size(master_key.private_key) == 32
+
+      # Derive first address
+      {:ok, address_key} = HD.derive_address(master_key, 0, 0)
+      address_bytes = Address.from_private_key(HD.private_key(address_key))
+      address = "0x" <> Base.encode16(address_bytes, case: :lower)
+
+      # Verify address
+      assert String.starts_with?(address, "0x")
+      assert String.length(address) == 42
+      assert Address.valid?(address)
+
+      # Same workflow should give same result
+      {:ok, seed2} = Mnemonic.to_seed(words)
+      {:ok, master_key2} = HD.master_key_from_seed(seed2)
+      {:ok, address_key2} = HD.derive_address(master_key2, 0, 0)
+      address_bytes2 = Address.from_private_key(HD.private_key(address_key2))
+      address2 = "0x" <> Base.encode16(address_bytes2, case: :lower)
+
+      assert address == address2
+    end
+
+    test "direct private key derivation matches HD key derivation" do
+      {:ok, words} = Mnemonic.generate()
+
+      # Method 1: Direct private key derivation
+      path = "#{HD.vet_derivation_path()}/0"
+      {:ok, private_key_direct} = Mnemonic.to_private_key(words, path)
+
+      # Method 2: HD key derivation
+      {:ok, hd_key} = HD.from_mnemonic(words, path)
+      private_key_hd = HD.private_key(hd_key)
+
+      # Both methods should give same result
+      assert private_key_direct == private_key_hd
+
+      # Addresses should also match
+      address_bytes_direct = Address.from_private_key(private_key_direct)
+      address_bytes_hd = Address.from_private_key(HD.private_key(hd_key))
+      assert address_bytes_direct == address_bytes_hd
     end
   end
 end

@@ -1,8 +1,6 @@
 defmodule VeChain.Crypto.AddressTest do
   @moduledoc """
   Tests for VeChain address derivation and validation.
-
-  Uses test vectors from the official VeChain TypeScript SDK to ensure compatibility.
   """
   use ExUnit.Case, async: true
 
@@ -10,7 +8,6 @@ defmodule VeChain.Crypto.AddressTest do
 
   doctest VeChain.Crypto.Address
 
-  # Test vector from VeChain SDK: learning/packages/core/tests/vcdm/Address.unit.test.ts
   @test_private_key Base.decode16!(
                       "5434C159B817C377A55F6BE66369622976014E78BCE2ADFD3E44E5DE88CE502F",
                       case: :mixed
@@ -33,7 +30,9 @@ defmodule VeChain.Crypto.AddressTest do
       assert is_binary(address)
 
       # Verify it matches the expected address from the TypeScript SDK
-      address_hex = VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
+      address_hex =
+        VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
+
       assert address_hex == @expected_address
     end
 
@@ -66,7 +65,9 @@ defmodule VeChain.Crypto.AddressTest do
       assert byte_size(address) == 20
 
       # Verify it matches the expected address from the TypeScript SDK
-      address_hex = VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
+      address_hex =
+        VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
+
       assert address_hex == @expected_address
     end
 
@@ -115,44 +116,46 @@ defmodule VeChain.Crypto.AddressTest do
     end
   end
 
-  describe "TypeScript SDK compatibility" do
-    test "matches TypeScript SDK address from private key" do
-      # From: learning/packages/core/tests/vcdm/Address.unit.test.ts:44-51
+  describe "address derivation from private key" do
+    test "derives correct address from known private key" do
       address = Address.from_private_key(@test_private_key)
-      address_hex = VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
+
+      address_hex =
+        VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
 
       assert address_hex == @expected_address,
              """
-             Failed to match TypeScript SDK test vector!
+             Address derivation mismatch!
 
              Expected: #{@expected_address}
              Got:      #{address_hex}
              """
     end
 
-    test "matches TypeScript SDK address from public key" do
-      # From: learning/packages/core/tests/vcdm/Address.unit.test.ts:62-69
+    test "derives correct address from known public key" do
       <<0x04, public_key_64::binary-size(64)>> = @test_public_key
 
       address = Address.from_public_key(public_key_64)
-      address_hex = VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
+
+      address_hex =
+        VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address, case: :lower))
 
       assert address_hex == @expected_address,
              """
-             Failed to match TypeScript SDK test vector!
+             Address derivation mismatch!
 
              Expected: #{@expected_address}
              Got:      #{address_hex}
              """
     end
 
-    test "public key derivation matches TypeScript SDK" do
+    test "derives correct public key from private key" do
       public_key = Secp256k1.private_key_to_public_key(@test_private_key)
       expected_without_prefix = binary_part(@test_public_key, 1, 64)
 
       assert public_key == expected_without_prefix,
              """
-             Public key derivation doesn't match TypeScript SDK!
+             Public key derivation mismatch!
 
              Expected: #{Base.encode16(expected_without_prefix, case: :lower)}
              Got:      #{Base.encode16(public_key, case: :lower)}
@@ -190,7 +193,9 @@ defmodule VeChain.Crypto.AddressTest do
       assert address1 == address2
 
       # Both should match the expected address
-      address_hex = VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address1, case: :lower))
+      address_hex =
+        VeChain.Utils.to_checksum_address("0x" <> Base.encode16(address1, case: :lower))
+
       assert address_hex == @expected_address
     end
 

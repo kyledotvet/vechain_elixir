@@ -306,4 +306,123 @@ defmodule VeChain.Wallet.HDTest do
       assert HD.address(first_key1) == HD.address(first_key2)
     end
   end
+
+  describe "from_mnemonic/3" do
+    setup do
+      {:ok, mnemonic} = Mnemonic.generate()
+      %{mnemonic: mnemonic}
+    end
+
+    test "creates HDKey from mnemonic with default path", %{mnemonic: mnemonic} do
+      {:ok, key} = HD.from_mnemonic(mnemonic)
+      assert is_map(key)
+      assert byte_size(key.private_key) == 32
+      # Default path "m/44'/818'/0'/0" has depth 4
+      assert key.depth == 4
+    end
+
+    test "creates HDKey from mnemonic with custom path", %{mnemonic: mnemonic} do
+      {:ok, key} = HD.from_mnemonic(mnemonic, "m/0/1")
+      assert is_map(key)
+      assert key.depth == 2
+    end
+
+    test "creates HDKey from mnemonic with passphrase", %{mnemonic: mnemonic} do
+      {:ok, key1} = HD.from_mnemonic(mnemonic, HD.vet_derivation_path(), "")
+      {:ok, key2} = HD.from_mnemonic(mnemonic, HD.vet_derivation_path(), "passphrase")
+
+      # Different passphrases should yield different keys
+      refute key1.private_key == key2.private_key
+    end
+
+    test "returns same key as manual derivation", %{mnemonic: mnemonic} do
+      # Using from_mnemonic
+      {:ok, key1} = HD.from_mnemonic(mnemonic, "m/44'/818'/0'/0/0")
+
+      # Using manual process
+      {:ok, seed} = Mnemonic.to_seed(mnemonic)
+      {:ok, master} = HD.master_key_from_seed(seed)
+      {:ok, key2} = HD.derive(master, "m/44'/818'/0'/0/0")
+
+      assert key1 == key2
+    end
+  end
+
+  describe "from_mnemonic!/3" do
+    test "returns key without tuple" do
+      {:ok, mnemonic} = Mnemonic.generate()
+      key = HD.from_mnemonic!(mnemonic)
+      assert is_map(key)
+    end
+
+    test "raises on invalid mnemonic" do
+      assert_raise ArgumentError, fn ->
+        HD.from_mnemonic!(["invalid", "words"])
+      end
+    end
+  end
+
+  describe "derive_child/2" do
+    setup do
+      {:ok, mnemonic} = Mnemonic.generate()
+      {:ok, master} = HD.from_mnemonic(mnemonic, "m/44'/818'/0'/0")
+      %{master: master}
+    end
+
+    test "derives normal child by index", %{master: master} do
+      {:ok, child} = HD.derive_child(master, 0)
+      assert child.depth == master.depth + 1
+      assert child.child_index == 0
+      assert child.parent_fingerprint == HD.fingerprint(master)
+    end
+
+    test "derives hardened child by index", %{master: master} do
+      hardened_index = 0x80000000
+      {:ok, child} = HD.derive_child(master, hardened_index)
+      assert child.depth == master.depth + 1
+      assert child.child_index == hardened_index
+    end
+
+    test "derives multiple children with different keys", %{master: master} do
+      children =
+        for i <- 0..4 do
+          {:ok, child} = HD.derive_child(master, i)
+          child
+        end
+
+      # All should have different private keys
+      private_keys = Enum.map(children, & &1.private_key)
+      assert length(Enum.uniq(private_keys)) == 5
+
+      # All should have correct parent
+      Enum.each(children, fn child ->
+        assert child.parent_fingerprint == HD.fingerprint(master)
+      end)
+    end
+
+    test "derive_child matches derive with path", %{master: master} do
+      # Derive using derive_child
+      {:ok, child1} = HD.derive_child(master, 5)
+
+      # Derive using path
+      {:ok, child2} = HD.derive(master, "5")
+
+      assert child1 == child2
+    end
+  end
+
+  describe "derive_child!/2" do
+    test "returns child without tuple" do
+      {:ok, mnemonic} = Mnemonic.generate()
+      {:ok, master} = HD.from_mnemonic(mnemonic, "m/44'/818'/0'/0")
+      child = HD.derive_child!(master, 0)
+      assert is_map(child)
+    end
+  end
+
+  describe "vet_derivation_path/0" do
+    test "returns VeChain standard derivation path" do
+      assert HD.vet_derivation_path() == "m/44'/818'/0'/0"
+    end
+  end
 end
