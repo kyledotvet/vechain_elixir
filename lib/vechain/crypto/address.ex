@@ -8,12 +8,13 @@ defmodule VeChain.Crypto.Address do
 
   ## Address Derivation
 
-  VeChain addresses are derived from public keys using Blake2b-256 hashing:
-  1. Hash the 64-byte uncompressed public key with Blake2b-256
+  VeChain addresses are derived from public keys using Keccak-256 hashing:
+  1. Hash the 64-byte uncompressed public key with Keccak-256
   2. Take the last 20 bytes of the hash
-  3. Optionally apply EIP-55 checksumming with Blake2b
+  3. Optionally apply EIP-55 checksumming with Keccak-256
 
-  **CRITICAL**: VeChain uses Blake2b, NOT Keccak-256 like Ethereum.
+  **IMPORTANT**: VeChain uses Keccak-256 for address derivation (same as Ethereum).
+  Blake2b is used for transaction IDs and signing hashes, but NOT for addresses.
 
   ## Examples
 
@@ -26,7 +27,7 @@ defmodule VeChain.Crypto.Address do
       address = Address.from_public_key(public_key)
 
       # From signature (recover signer)
-      message_hash = Blake2b.hash("hello")
+      message_hash = :crypto.hash(:sha256, "hello")
       signature = Secp256k1.sign(message_hash, private_key)
       {:ok, address} = Address.from_signature(message_hash, signature)
 
@@ -37,11 +38,15 @@ defmodule VeChain.Crypto.Address do
       {:ok, checksummed} = Address.checksum("0x7567d83b...")
   """
 
-  alias VeChain.Crypto.{Blake2b, Secp256k1}
+  alias VeChain.Crypto.Secp256k1
   alias VeChain.Utils
 
   @doc """
   Derives an address from a public key.
+
+  VeChain uses Keccak-256 for address derivation (same as Ethereum):
+  1. Hash the 64-byte uncompressed public key with Keccak-256
+  2. Take the last 20 bytes of the hash
 
   ## Parameters
 
@@ -62,7 +67,10 @@ defmodule VeChain.Crypto.Address do
   """
   @spec from_public_key(binary()) :: binary()
   def from_public_key(<<public_key::binary-size(64)>>) do
-    Blake2b.public_key_to_address(public_key)
+    # VeChain uses Keccak-256 for address derivation (same as Ethereum)
+    public_key
+    |> ExKeccak.hash_256()
+    |> binary_part(12, 20)
   end
 
   @doc """
@@ -96,7 +104,7 @@ defmodule VeChain.Crypto.Address do
 
   ## Parameters
 
-    * `message_hash` - 32-byte Blake2b hash of the message
+    * `message_hash` - 32-byte hash of the message (typically Blake2b for VeChain transactions)
     * `signature` - 65-byte signature
 
   ## Returns
@@ -106,10 +114,10 @@ defmodule VeChain.Crypto.Address do
 
   ## Examples
 
-      iex> alias VeChain.Crypto.{Address, Secp256k1, Blake2b}
+      iex> alias VeChain.Crypto.{Address, Secp256k1}
       iex> private_key = Secp256k1.generate_private_key()
-      iex> message_hash = Blake2b.hash256("hello")
-      iex> {:ok, signature} = Secp256k1.sign(message_hash, private_key)
+      iex> message_hash = :crypto.hash(:sha256, "hello")
+      iex> signature = Secp256k1.sign(message_hash, private_key)
       iex> {:ok, address} = Address.from_signature(message_hash, signature)
       iex> byte_size(address)
       20
@@ -151,7 +159,7 @@ defmodule VeChain.Crypto.Address do
   @doc """
   Validates an address checksum.
 
-  Checks if the address has a valid EIP-55 style checksum (using Blake2b).
+  Checks if the address has a valid EIP-55 style checksum (using Keccak-256).
 
   ## Parameters
 
@@ -163,7 +171,7 @@ defmodule VeChain.Crypto.Address do
 
   ## Examples
 
-      iex> Address.valid_checksum?("0x7567d83B7B8D80adDcb281a71D54Fc7B3364FfEd")
+      iex> Address.valid_checksum?("0x7567D83b7b8d80ADdCb281A71d54Fc7B3364ffed")
       true
 
       iex> Address.valid_checksum?("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed")
@@ -175,7 +183,7 @@ defmodule VeChain.Crypto.Address do
   end
 
   @doc """
-  Generates a checksummed address (EIP-55 style with Blake2b).
+  Generates a checksummed address (EIP-55 style with Keccak-256).
 
   ## Parameters
 
@@ -190,16 +198,19 @@ defmodule VeChain.Crypto.Address do
 
       iex> {:ok, checksummed} = Address.checksum("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed")
       iex> checksummed
-      "0x7567d83B7B8D80adDcb281a71D54Fc7B3364FfEd"
+      "0x7567D83b7b8d80ADdCb281A71d54Fc7B3364ffed"
 
       iex> binary = <<117, 103, 216, 59, 123, 141, 128, 173, 220, 178, 129, 167, 29, 84, 252, 123, 51, 100, 255, 237>>
       iex> {:ok, checksummed} = Address.checksum(binary)
       iex> checksummed
-      "0x7567d83B7B8D80adDcb281a71D54Fc7B3364FfEd"
+      "0x7567D83b7b8d80ADdCb281A71d54Fc7B3364ffed"
   """
   @spec checksum(binary()) :: {:ok, String.t()} | {:error, String.t()}
   def checksum(address) when is_binary(address) do
-    Utils.checksum_address(address)
+    case Utils.address_to_binary(address) do
+      {:ok, bin} -> {:ok, Utils.to_checksum_address("0x" <> Base.encode16(bin, case: :lower))}
+      {:error, _} = error -> error
+    end
   end
 
   @doc """
@@ -223,12 +234,13 @@ defmodule VeChain.Crypto.Address do
       20
 
       iex> binary = <<1::160>>
-      iex> {:ok, ^binary} = Address.to_binary(binary)
-      :ok
+      iex> {:ok, result} = Address.to_binary(binary)
+      iex> result == binary
+      true
   """
   @spec to_binary(binary()) :: {:ok, binary()} | {:error, String.t()}
   def to_binary(address) when is_binary(address) do
-    Utils.to_binary(address)
+    Utils.address_to_binary(address)
   end
 
   @doc """
