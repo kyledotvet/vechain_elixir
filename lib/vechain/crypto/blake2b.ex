@@ -2,12 +2,12 @@ defmodule VeChain.Crypto.Blake2b do
   @moduledoc """
   Blake2b-256 hashing for VeChain.
 
-  **CRITICAL DIFFERENCE FROM ETHEREUM**: VeChain uses Blake2b-256 for hashing,
-  NOT Keccak-256 like Ethereum. This affects:
+  **IMPORTANT**: VeChain uses Blake2b-256 for specific operations, but NOT for
+  address derivation (which uses Keccak-256 like Ethereum).
 
+  Blake2b is used for:
   - Transaction ID generation
-  - Address derivation from public keys
-  - Message signing (though the signature algorithm is still secp256k1)
+  - Transaction signing hash generation
 
   Blake2b is a cryptographic hash function faster than MD5, SHA-1, SHA-2, and
   SHA-3, yet is at least as secure as the latest standard SHA-3.
@@ -25,12 +25,6 @@ defmodule VeChain.Crypto.Blake2b do
       iex> byte_size(signing_hash)
       32
 
-      # Derive address from public key
-      iex> public_key = <<1::512>>  # Example 64-byte public key
-      iex> address = VeChain.Crypto.Blake2b.hash(public_key) |> binary_part(12, 20)
-      iex> byte_size(address)
-      20
-
   ## Technical Details
 
   VeChain uses Blake2b with:
@@ -42,8 +36,12 @@ defmodule VeChain.Crypto.Blake2b do
   ## Key Use Cases
 
   1. **Transaction ID**: Blake2b(RLP(signed_transaction))
-  2. **Address Derivation**: Last 20 bytes of Blake2b(public_key)
-  3. **Signing Hash**: Blake2b(RLP(unsigned_transaction))
+  2. **Signing Hash**: Blake2b(RLP(unsigned_transaction))
+
+  ## NOTE: Address Derivation
+
+  Address derivation uses **Keccak-256**, not Blake2b. See `VeChain.Crypto.Address`
+  for address-related operations.
   """
 
   @doc """
@@ -103,12 +101,12 @@ defmodule VeChain.Crypto.Blake2b do
   end
 
   @doc """
-  Derives a VeChain address from a public key.
+  **DEPRECATED**: This function is incorrect and should not be used.
 
-  A VeChain address is the last 20 bytes of the Blake2b-256 hash of the
-  uncompressed public key (without the 0x04 prefix).
+  VeChain uses Keccak-256 for address derivation, NOT Blake2b.
+  Use `VeChain.Crypto.Address.from_public_key/1` instead.
 
-  **NOTE**: This is different from Ethereum which uses Keccak-256.
+  This function is kept for backwards compatibility but will be removed in a future version.
 
   ## Parameters
 
@@ -116,26 +114,14 @@ defmodule VeChain.Crypto.Blake2b do
 
   ## Returns
 
-  20-byte address binary.
-
-  ## Examples
-
-      iex> # Generate a test 64-byte public key
-      iex> public_key = <<1::512>>
-      iex> address = VeChain.Crypto.Blake2b.public_key_to_address(public_key)
-      iex> byte_size(address)
-      20
-
-      iex> # Convert to hex for display
-      iex> public_key = <<2::512>>
-      iex> address = VeChain.Crypto.Blake2b.public_key_to_address(public_key)
-      iex> address_hex = "0x" <> Base.encode16(address, case: :lower)
-      iex> String.starts_with?(address_hex, "0x") and String.length(address_hex) == 42
-      true
+  20-byte address binary (INCORRECT - uses Blake2b instead of Keccak-256).
   """
+  @deprecated "Use VeChain.Crypto.Address.from_public_key/1 instead. VeChain uses Keccak-256 for addresses, not Blake2b."
   @spec public_key_to_address(<<_::512>>) :: <<_::160>>
   def public_key_to_address(<<public_key::binary-size(64)>>) do
-    # Hash the public key and take the last 20 bytes
+    # NOTE: This is INCORRECT for VeChain address derivation
+    # VeChain uses Keccak-256, not Blake2b
+    # This function is deprecated and kept only for backwards compatibility
     hash(public_key)
     |> binary_part(12, 20)
   end

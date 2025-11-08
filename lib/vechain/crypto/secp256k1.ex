@@ -3,9 +3,10 @@ defmodule VeChain.Crypto.Secp256k1 do
   Secp256k1 elliptic curve cryptography for VeChain.
 
   VeChain uses the same secp256k1 curve as Bitcoin and Ethereum for public key
-  cryptography and ECDSA signatures. However, it differs in the **hashing**:
+  cryptography and ECDSA signatures.
 
-  - **Signing**: Sign Blake2b-256 hash (not Keccak-256)
+  - **Address Derivation**: Uses Keccak-256 (same as Ethereum)
+  - **Transaction Signing**: Uses Blake2b-256 (different from Ethereum)
   - **Curve**: secp256k1 (same as Ethereum/Bitcoin)
   - **Signature**: 65-byte recoverable signature (r, s, v)
 
@@ -17,8 +18,8 @@ defmodule VeChain.Crypto.Secp256k1 do
       # Derive public key
       public_key = VeChain.Crypto.Secp256k1.private_key_to_public_key(private_key)
 
-      # Derive address
-      address = VeChain.Crypto.Blake2b.public_key_to_address(public_key)
+      # Derive address (uses Keccak-256)
+      address = VeChain.Crypto.Address.from_public_key(public_key)
 
   ## Transaction Signing
 
@@ -41,7 +42,7 @@ defmodule VeChain.Crypto.Secp256k1 do
   The recovery id allows recovering the public key from the signature.
   """
 
-  alias VeChain.Crypto.Blake2b
+  # No aliases needed - we'll use ExKeccak directly for address derivation
 
   @doc """
   Generates a new random private key.
@@ -104,7 +105,7 @@ defmodule VeChain.Crypto.Secp256k1 do
   Derives a VeChain address from a private key.
 
   This is a convenience function that combines public key derivation and
-  address generation.
+  address generation using Keccak-256 (same as Ethereum).
 
   ## Parameters
 
@@ -123,9 +124,11 @@ defmodule VeChain.Crypto.Secp256k1 do
   """
   @spec private_key_to_address(<<_::256>>) :: <<_::160>>
   def private_key_to_address(<<private_key::binary-size(32)>>) do
+    # VeChain uses Keccak-256 for address derivation (same as Ethereum)
     private_key
     |> private_key_to_public_key()
-    |> Blake2b.public_key_to_address()
+    |> ExKeccak.hash_256()
+    |> binary_part(12, 20)
   end
 
   @doc """
@@ -242,11 +245,11 @@ defmodule VeChain.Crypto.Secp256k1 do
   Recovers the address from a signature and message hash.
 
   This is a convenience function that combines public key recovery and
-  address derivation.
+  address derivation using Keccak-256.
 
   ## Parameters
 
-    * `message_hash` - 32-byte Blake2b hash of the message
+    * `message_hash` - 32-byte hash of the message (typically Blake2b for VeChain transactions)
     * `signature` - 65-byte signature
 
   ## Returns
@@ -256,17 +259,19 @@ defmodule VeChain.Crypto.Secp256k1 do
 
   ## Examples
 
+      iex> alias VeChain.Crypto.Blake2b
       iex> private_key = VeChain.Crypto.Secp256k1.generate_private_key()
-      iex> message_hash = VeChain.Crypto.Blake2b.hash("hello")
+      iex> message_hash = Blake2b.hash("hello")
       iex> signature = VeChain.Crypto.Secp256k1.sign(message_hash, private_key)
       iex> {:ok, address} = VeChain.Crypto.Secp256k1.recover_address(message_hash, signature)
       iex> byte_size(address)
       20
 
       iex> # Verify it matches original address
+      iex> alias VeChain.Crypto.Blake2b
       iex> private_key = VeChain.Crypto.Secp256k1.generate_private_key()
       iex> original_address = VeChain.Crypto.Secp256k1.private_key_to_address(private_key)
-      iex> message_hash = VeChain.Crypto.Blake2b.hash("hello")
+      iex> message_hash = Blake2b.hash("hello")
       iex> signature = VeChain.Crypto.Secp256k1.sign(message_hash, private_key)
       iex> {:ok, recovered_address} = VeChain.Crypto.Secp256k1.recover_address(message_hash, signature)
       iex> recovered_address == original_address
@@ -276,7 +281,13 @@ defmodule VeChain.Crypto.Secp256k1 do
   def recover_address(message_hash, signature) do
     case recover(message_hash, signature) do
       {:ok, public_key} ->
-        {:ok, Blake2b.public_key_to_address(public_key)}
+        # VeChain uses Keccak-256 for address derivation (same as Ethereum)
+        address =
+          public_key
+          |> ExKeccak.hash_256()
+          |> binary_part(12, 20)
+
+        {:ok, address}
 
       {:error, _} = error ->
         error
