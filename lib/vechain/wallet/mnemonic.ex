@@ -422,6 +422,67 @@ defmodule VeChain.Wallet.Mnemonic do
     seed
   end
 
+  @doc """
+  Derive a private key from mnemonic words using a derivation path.
+
+  This is a convenience function that combines seed generation, master key
+  creation, and path derivation to directly extract the private key.
+
+  ## Parameters
+
+  - `words` - List of mnemonic words
+  - `path` - BIP32/BIP44 derivation path (default: "m/44'/818'/0'/0/0")
+  - `passphrase` - Optional passphrase for seed generation (default: "")
+
+  ## Examples
+
+      words = ["ignore", "empty", "bird", ...]
+      {:ok, private_key} = VeChain.Wallet.Mnemonic.to_private_key(words)
+      # => {:ok, <<...>>} (32 bytes)
+
+      # With custom path
+      {:ok, private_key} = VeChain.Wallet.Mnemonic.to_private_key(words, "m/0/1")
+
+      # With passphrase
+      {:ok, private_key} = VeChain.Wallet.Mnemonic.to_private_key(words, "m/44'/818'/0'/0/0", "secret")
+  """
+  @spec to_private_key(mnemonic(), derivation_path :: String.t(), passphrase :: String.t()) ::
+          {:ok, binary()} | {:error, term()}
+  def to_private_key(words, path \\ "m/44'/818'/0'/0/0", passphrase \\ "")
+      when is_list(words) and is_binary(path) and is_binary(passphrase) do
+    alias VeChain.Wallet.HD
+
+    # Validate mnemonic before processing
+    if not valid?(words) do
+      {:error, :invalid_mnemonic}
+    else
+      with {:ok, seed} <- to_seed(words, passphrase),
+           {:ok, master_key} <- HD.master_key_from_seed(seed),
+           {:ok, derived_key} <- HD.derive(master_key, path) do
+        {:ok, HD.private_key(derived_key)}
+      end
+    end
+  end
+
+  @doc """
+  Derive a private key from mnemonic words. Raises on error.
+
+  ## Examples
+
+      words = ["ignore", "empty", "bird", ...]
+      private_key = VeChain.Wallet.Mnemonic.to_private_key!(words)
+      # => <<...>> (32 bytes)
+  """
+  @spec to_private_key!(mnemonic(), derivation_path :: String.t(), passphrase :: String.t()) ::
+          binary()
+  def to_private_key!(words, path \\ "m/44'/818'/0'/0/0", passphrase \\ "") do
+    case to_private_key(words, path, passphrase) do
+      {:ok, private_key} -> private_key
+      {:error, reason} ->
+        raise ArgumentError, "Failed to derive private key from mnemonic: #{reason}"
+    end
+  end
+
   # Private functions
 
   defp generate_entropy(bits) do
@@ -466,16 +527,29 @@ defmodule VeChain.Wallet.Mnemonic do
     entropy_bits = div(total_bits * 32, 33)
     checksum_bits = total_bits - entropy_bits
 
-    <<entropy::bits-size(entropy_bits), provided_checksum::bits-size(checksum_bits)>> =
-      data_and_checksum
-
-    <<expected_checksum::bits-size(checksum_bits), _::bits>> =
-      :crypto.hash(:sha256, <<entropy::bits>>)
-
-    if provided_checksum == expected_checksum do
-      {:ok, <<entropy::bits>>}
-    else
+    # Ensure we have valid bit sizes
+    if rem(entropy_bits, 8) != 0 or checksum_bits <= 0 do
       {:error, :invalid_checksum}
+    else
+      <<entropy::bits-size(entropy_bits), provided_checksum::bits-size(checksum_bits)>> =
+        data_and_checksum
+
+      # Convert bitstring to binary for hashing
+      entropy_binary = <<entropy::bits>>
+
+      # Only hash if we have a proper byte-aligned binary
+      if rem(bit_size(entropy_binary), 8) == 0 do
+        <<expected_checksum::bits-size(checksum_bits), _::bits>> =
+          :crypto.hash(:sha256, entropy_binary)
+
+        if provided_checksum == expected_checksum do
+          {:ok, entropy_binary}
+        else
+          {:error, :invalid_checksum}
+        end
+      else
+        {:error, :invalid_checksum}
+      end
     end
   end
 

@@ -50,9 +50,12 @@ defmodule VeChain.Wallet.HD do
   """
 
   alias VeChain.Crypto.Secp256k1
+  alias VeChain.Wallet.Mnemonic
 
   @vechain_coin_type 818
   @hardened_offset 0x80000000
+
+  @vet_derivation_path "m/44'/818'/0'/0"
 
   # Secp256k1 curve order
   @secp256k1_n 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -66,6 +69,7 @@ defmodule VeChain.Wallet.HD do
         }
 
   @type derivation_path :: String.t()
+  @type mnemonic :: [String.t()]
 
   @doc """
   Generate master key from seed.
@@ -228,6 +232,8 @@ defmodule VeChain.Wallet.HD do
   @doc """
   Get the public key from an extended key.
 
+  Returns the uncompressed public key with 0x04 prefix (65 bytes).
+
   ## Examples
 
       public_key = VeChain.Wallet.HD.public_key(extended_key)
@@ -235,7 +241,9 @@ defmodule VeChain.Wallet.HD do
   """
   @spec public_key(extended_key()) :: binary()
   def public_key(%{private_key: private_key}) do
-    Secp256k1.private_key_to_public_key(private_key)
+    # Get 64-byte public key from Secp256k1 and add 0x04 prefix
+    pub_key_64 = Secp256k1.private_key_to_public_key(private_key)
+    <<0x04>> <> pub_key_64
   end
 
   @doc """
@@ -256,6 +264,8 @@ defmodule VeChain.Wallet.HD do
   @doc """
   Get the VeChain address from an extended key.
 
+  Returns the address as a hex string with "0x" prefix.
+
   ## Examples
 
       address = VeChain.Wallet.HD.address(extended_key)
@@ -264,7 +274,161 @@ defmodule VeChain.Wallet.HD do
   @spec address(extended_key()) :: String.t()
   def address(key) do
     private_key = private_key(key)
-    VeChain.Crypto.Address.from_private_key(private_key)
+    address_bytes = VeChain.Crypto.Address.from_private_key(private_key)
+    "0x" <> Base.encode16(address_bytes, case: :lower)
+  end
+
+  @doc """
+  Get the VeChain standard derivation path.
+
+  Returns the standard BIP44 derivation path for VeChain: "m/44'/818'/0'/0"
+
+  ## Examples
+
+      VeChain.Wallet.HD.vet_derivation_path()
+      # => "m/44'/818'/0'/0"
+  """
+  @spec vet_derivation_path() :: String.t()
+  def vet_derivation_path, do: @vet_derivation_path
+
+  @doc """
+  Create an HDKey from mnemonic words and optional derivation path.
+
+  This is a convenience function that combines seed generation and key derivation.
+
+  ## Parameters
+
+  - `mnemonic` - List of mnemonic words
+  - `path` - Optional derivation path (default: "m/44'/818'/0'/0")
+  - `passphrase` - Optional passphrase for seed generation (default: "")
+
+  ## Examples
+
+      words = ["ignore", "empty", "bird", ...]
+      {:ok, key} = VeChain.Wallet.HD.from_mnemonic(words)
+
+      # With custom path
+      {:ok, key} = VeChain.Wallet.HD.from_mnemonic(words, "m/0/1")
+
+      # With passphrase
+      {:ok, key} = VeChain.Wallet.HD.from_mnemonic(words, "m/44'/818'/0'/0", "secret")
+  """
+  @spec from_mnemonic(mnemonic(), derivation_path(), String.t()) ::
+          {:ok, extended_key()} | {:error, term()}
+  def from_mnemonic(mnemonic, path \\ @vet_derivation_path, passphrase \\ "")
+      when is_list(mnemonic) and is_binary(path) and is_binary(passphrase) do
+    alias VeChain.Wallet.Mnemonic
+
+    # Validate mnemonic before processing
+    if not Mnemonic.valid?(mnemonic) do
+      {:error, :invalid_mnemonic}
+    else
+      with {:ok, seed} <- Mnemonic.to_seed(mnemonic, passphrase),
+           {:ok, master_key} <- master_key_from_seed(seed),
+           {:ok, derived_key} <- derive(master_key, path) do
+        {:ok, derived_key}
+      end
+    end
+  end
+
+  @doc """
+  Create an HDKey from mnemonic words. Raises on error.
+
+  ## Examples
+
+      words = ["ignore", "empty", "bird", ...]
+      key = VeChain.Wallet.HD.from_mnemonic!(words)
+  """
+  @spec from_mnemonic!(mnemonic(), derivation_path(), String.t()) :: extended_key()
+  def from_mnemonic!(mnemonic, path \\ @vet_derivation_path, passphrase \\ "") do
+    case from_mnemonic(mnemonic, path, passphrase) do
+      {:ok, key} -> key
+      {:error, reason} -> raise ArgumentError, "Failed to create HDKey from mnemonic: #{reason}"
+    end
+  end
+
+  @doc """
+  Derive a single child key by index.
+
+  This derives a child key from the parent using a single index value.
+
+  ## Parameters
+
+  - `parent` - Parent extended key
+  - `index` - Child index (use index >= 0x80000000 for hardened derivation)
+
+  ## Examples
+
+      # Normal derivation
+      {:ok, child} = VeChain.Wallet.HD.derive_child(parent, 0)
+
+      # Hardened derivation
+      hardened_index = 0x80000000
+      {:ok, child} = VeChain.Wallet.HD.derive_child(parent, hardened_index)
+  """
+  @spec derive_child(extended_key(), non_neg_integer()) ::
+          {:ok, extended_key()} | {:error, :invalid_derivation}
+  def derive_child(parent, index) when is_map(parent) and is_integer(index) and index >= 0 do
+    hardened? = index >= @hardened_offset
+
+    # Prepare data for HMAC
+    data =
+      if hardened? do
+        # Hardened: ser256(kpar) = 0x00 || private_key (33 bytes)
+        <<0>> <> parent.private_key <> <<index::32>>
+      else
+        # Normal: serP(point(kpar)) = compressed public key (33 bytes)
+        compressed_pub =
+          parent.private_key |> Secp256k1.private_key_to_public_key() |> compress_public_key()
+
+        compressed_pub <> <<index::32>>
+      end
+
+    # I = HMAC-SHA512(Key = chain_code, Data = data)
+    <<il::binary-32, ir::binary-32>> = :crypto.mac(:hmac, :sha512, parent.chain_code, data)
+
+    # Parse IL as 256-bit integer
+    il_int = :binary.decode_unsigned(il, :big)
+
+    # Check if IL >= n (invalid, should try next index)
+    if il_int >= @secp256k1_n do
+      {:error, :invalid_derivation}
+    else
+      # ki = (parse256(IL) + kpar) mod n
+      parent_key_int = :binary.decode_unsigned(parent.private_key, :big)
+      child_key_int = rem(il_int + parent_key_int, @secp256k1_n)
+
+      # Check if child key is zero (invalid)
+      if child_key_int == 0 do
+        {:error, :invalid_derivation}
+      else
+        child_private_key = :binary.encode_unsigned(child_key_int, :big) |> pad_to_32_bytes()
+
+        {:ok,
+         %{
+           private_key: child_private_key,
+           chain_code: ir,
+           depth: parent.depth + 1,
+           parent_fingerprint: fingerprint(parent),
+           child_index: index
+         }}
+      end
+    end
+  end
+
+  @doc """
+  Derive a single child key by index. Raises on error.
+
+  ## Examples
+
+      child = VeChain.Wallet.HD.derive_child!(parent, 0)
+  """
+  @spec derive_child!(extended_key(), non_neg_integer()) :: extended_key()
+  def derive_child!(parent, index) do
+    case derive_child(parent, index) do
+      {:ok, child} -> child
+      {:error, reason} -> raise ArgumentError, "Failed to derive child: #{reason}"
+    end
   end
 
   @doc """
@@ -328,53 +492,15 @@ defmodule VeChain.Wallet.HD do
     end
   end
 
-  defp derive_child(parent, index) when is_integer(index) and index >= 0 do
-    hardened? = index >= @hardened_offset
-
-    # Prepare data for HMAC
-    data =
-      if hardened? do
-        # Hardened: ser256(kpar) = 0x00 || private_key (33 bytes)
-        <<0>> <> parent.private_key <> <<index::32>>
-      else
-        # Normal: serP(point(kpar)) = compressed public key (33 bytes)
-        compressed_pub = parent.private_key |> Secp256k1.private_key_to_public_key() |> compress_public_key()
-        compressed_pub <> <<index::32>>
-      end
-
-    # I = HMAC-SHA512(Key = chain_code, Data = data)
-    <<il::binary-32, ir::binary-32>> = :crypto.mac(:hmac, :sha512, parent.chain_code, data)
-
-    # Parse IL as 256-bit integer
-    il_int = :binary.decode_unsigned(il, :big)
-
-    # Check if IL >= n (invalid, should try next index)
-    if il_int >= @secp256k1_n do
-      {:error, :invalid_derivation}
-    else
-      # ki = (parse256(IL) + kpar) mod n
-      parent_key_int = :binary.decode_unsigned(parent.private_key, :big)
-      child_key_int = rem(il_int + parent_key_int, @secp256k1_n)
-
-      # Check if child key is zero (invalid)
-      if child_key_int == 0 do
-        {:error, :invalid_derivation}
-      else
-        child_private_key = :binary.encode_unsigned(child_key_int, :big) |> pad_to_32_bytes()
-
-        {:ok,
-         %{
-           private_key: child_private_key,
-           chain_code: ir,
-           depth: parent.depth + 1,
-           parent_fingerprint: fingerprint(parent),
-           child_index: index
-         }}
-      end
-    end
+  # Handle uncompressed public key with 0x04 prefix (65 bytes)
+  defp compress_public_key(<<0x04::8, x::256, y::256>>) do
+    # If y is even, prefix is 0x02, else 0x03
+    prefix = if rem(y, 2) == 0, do: 0x02, else: 0x03
+    <<prefix::8, x::256>>
   end
 
-  defp compress_public_key(<<0x04::8, x::256, y::256>>) do
+  # Handle uncompressed public key without prefix (64 bytes)
+  defp compress_public_key(<<x::256, y::256>>) do
     # If y is even, prefix is 0x02, else 0x03
     prefix = if rem(y, 2) == 0, do: 0x02, else: 0x03
     <<prefix::8, x::256>>
