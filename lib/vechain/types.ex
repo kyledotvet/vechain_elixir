@@ -90,6 +90,11 @@ defmodule VeChain.Types do
           | <<_::1026>>
           | <<_::530>>
 
+  @typedoc """
+  Private key either in its binary format (32 bytes) or its hex format with 0x prefix (66 characters)
+  """
+  @type t_private_key :: t_hash()
+
   @type t_bitsizes :: unquote(8..256//8 |> Enum.reduce(&{:|, [], [&1, &2]}))
   @type t_bytesizes :: unquote(1..32 |> Enum.reduce(&{:|, [], [&1, &2]}))
   @type t_evm_types ::
@@ -107,72 +112,6 @@ defmodule VeChain.Types do
 
   defguardp valid_bitsize(bitsize) when bitsize >= 8 and bitsize <= 256 and rem(bitsize, 8) == 0
   defguardp valid_bytesize(bytesize) when bytesize >= 1 and bytesize <= 32
-
-  @doc """
-  Converts EVM data types to typespecs for documentation
-  """
-  def to_elixir_type(:address) do
-    quote do: VeChain.Types.t_address()
-  end
-
-  def to_elixir_type({:array, sub_type, _element_count}) do
-    to_elixir_type({:array, sub_type})
-  end
-
-  def to_elixir_type({:array, sub_type}) do
-    sub_type = to_elixir_type(sub_type)
-
-    quote do
-      [unquote(sub_type)]
-    end
-  end
-
-  def to_elixir_type({:bytes, size}) when valid_bytesize(size) do
-    quote do: <<_::unquote(size * 8)>>
-  end
-
-  def to_elixir_type(:bytes) do
-    quote do: binary()
-  end
-
-  def to_elixir_type(:bool) do
-    quote do: boolean()
-  end
-
-  def to_elixir_type(:function) do
-    raise "Function type not supported!"
-  end
-
-  def to_elixir_type({:ufixed, _element_count, _precision}) do
-    quote do: float()
-  end
-
-  def to_elixir_type({:fixed, _element_count, _precision}) do
-    quote do: float()
-  end
-
-  def to_elixir_type({:int, _}) do
-    quote do: integer
-  end
-
-  def to_elixir_type(:string) do
-    quote do: String.t()
-  end
-
-  def to_elixir_type({:tuple, sub_types}) do
-    sub_types = Enum.map(sub_types, &to_elixir_type/1)
-
-    quote do: {unquote_splicing(sub_types)}
-  end
-
-  def to_elixir_type({:uint, _}) do
-    quote do: non_neg_integer
-  end
-
-  def to_elixir_type(unknown) do
-    Logger.warning("Unknown type #{inspect(unknown)}")
-    quote do: term
-  end
 
   @doc """
   Returns the maximum possible value in the given type if supported.
