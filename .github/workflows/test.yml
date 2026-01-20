@@ -20,20 +20,7 @@ jobs:
             - ./data:/data/thor
             - ./logs:/var/log/thor
         options: >-
-          --entrypoint="thor solo \
-            --on-demand \
-            --api-addr=0.0.0.0:8669 \
-            --api-cors=* \
-            --txpool-limit-per-account=256 \
-            --cache=2048 \
-            --api-allowed-tracers=all \
-            --verbosity=9 \
-            --persist \
-            --api-enable-deprecated \
-            --api-call-gas-limit=150000000 \
-            --gas-limit=150000000 \
-            --api-timeout=240000 \
-            --hayabusa"
+          --entrypoint="thor solo --on-demand --api-addr=0.0.0.0:8669 --api-cors=* --txpool-limit-per-account=256 --cache=2048 --api-allowed-tracers=all --verbosity=9 --persist --api-enable-deprecated --api-call-gas-limit=150000000 --gas-limit=150000000 --api-timeout=240000 --hayabusa"
           --health-cmd="wget -q -O- http://127.0.0.1:8669/blocks/1"
           --health-interval=5s
           --health-timeout=20s
