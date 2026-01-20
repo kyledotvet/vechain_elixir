@@ -14,7 +14,6 @@ jobs:
     services:
       thor-solo:
         image: ghcr.io/vechain/thor:latest
-        container_name: thor-solo
         user: root
         ports:
           - 8669:8669
