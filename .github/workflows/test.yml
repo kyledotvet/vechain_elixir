@@ -19,6 +19,11 @@ jobs:
         volumes:
             - ./data:/data/thor
             - ./logs:/var/log/thor
+        options: >-
+          --health-cmd="wget -q -O- http://127.0.0.1:8669/blocks/1 || exit 1"
+          --health-interval=5s
+          --health-timeout=20s
+          --health-retries=10
         # command:
         #   - solo
         #   - --on-demand # create new block when there is pending transaction
@@ -44,4 +49,4 @@ jobs:
     steps:
       - name: Check that thor-solo is running
         run: |
-          docker ps | grep thor-solo
+          wget -q -O- http://thor-solo:8669/blocks/1
