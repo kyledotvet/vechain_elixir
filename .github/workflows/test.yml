@@ -57,6 +57,9 @@ jobs:
             -v ${{ github.workspace }}/logs:/var/log/thor \
             ghcr.io/vechain/thor:latest \
             solo --on-demand --api-addr=0.0.0.0:8669 --api-cors=* --txpool-limit-per-account=256 --cache=2048 --api-allowed-tracers=all --verbosity=9 --persist --api-enable-deprecated --api-call-gas-limit=150000000 --gas-limit=150000000 --api-timeout=240000 --hayabusa
-      - name: Check that it is running
+      - name: Check that it is running on the docker network
         run: |
           docker ps | grep thor-solo
+      - name: Wget Health Check
+        run: |
+          wget -O- http://127.0.0.1:8669/blocks/1
