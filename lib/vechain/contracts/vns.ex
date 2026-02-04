@@ -8,6 +8,7 @@ defmodule VeChain.Contracts.VNS do
   ## Contract Addresses
 
   - Mainnet: `0xa9231da8BF8D10e2df3f6E03Dd5449caD600129b`
+  - Testnet: `0xcBFB30c1F267914816668d53AcBA7bA7c9806D13`
   """
   @vns_address "0xa9231da8BF8D10e2df3f6E03Dd5449caD600129b"
 
@@ -26,6 +27,7 @@ defmodule VeChain.Contracts.VNS do
     ## Contract Addresses
 
     - Mainnet: `0xabac49445584C8b6c1472b030B1076Ac3901D7cf`
+    - Testnet: `0xA6eFd130085a127D090ACb0b100294aD1079EA6f`
     """
     @vns_resolver_address "0xabac49445584C8b6c1472b030B1076Ac3901D7cf"
 
