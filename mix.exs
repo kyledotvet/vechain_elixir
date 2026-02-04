@@ -23,6 +23,7 @@ defmodule VeChain.MixProject do
   defp deps do
     [
       {:blake2, "~> 1.0"},
+      {:ethers, "~> 0.6.10"},
       {:ex_abi, "~> 0.8.3"},
       {:ex_keccak, "~> 0.7.8"},
       {:ex_rlp, "~> 0.6.0"},
