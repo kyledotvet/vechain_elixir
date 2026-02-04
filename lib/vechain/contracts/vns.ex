@@ -13,7 +13,7 @@ defmodule VeChain.Contracts.VNS do
   @vns_address "0xa9231da8BF8D10e2df3f6E03Dd5449caD600129b"
 
   use VeChain.Contract,
-    abi_file: "priv/abi/vns_registry.json",
+    abi_file: "priv/abi/vns/registry.json",
     default_address: @vns_address
 
   defmodule Resolver do
@@ -32,7 +32,7 @@ defmodule VeChain.Contracts.VNS do
     @vns_resolver_address "0xabac49445584C8b6c1472b030B1076Ac3901D7cf"
 
     use VeChain.Contract,
-      abi_file: "priv/abi/vns_public_resolver.json",
+      abi_file: "priv/abi/vns/public_resolver.json",
       default_address: @vns_resolver_address
   end
 end
