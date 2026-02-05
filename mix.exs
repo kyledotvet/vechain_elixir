@@ -1,22 +1,81 @@
 defmodule VeChain.MixProject do
   use Mix.Project
 
+  @version "0.0.1"
+  @source_url "https://github.com/kyledotvet/vechain_elixir"
+
   def project do
     [
       app: :vechain,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.19",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      name: "VeChain",
+      source_url: @source_url,
+      deps: deps(),
+      test_coverage: [tool: ExCoveralls],
+      description: "VeChainThor blockchain client for Elixir",
+      package: package(),
+      docs: docs(),
+      dialyzer: dialyzer()
     ]
   end
 
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :ethereumex],
       mod: {VeChain.Application, []}
     ]
+  end
+
+  # Specifies which paths to compile per environment.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => @source_url},
+      maintainers: ["Kyle DotVet"],
+      files: ["lib", "priv", "mix.exs", "README*", "LICENSE*", "CHANGELOG*"]
+    ]
+  end
+
+  defp docs do
+    source_ref =
+      if String.ends_with?(@version, "-dev") do
+        "main"
+      else
+        "v#{@version}"
+      end
+
+    [
+      main: "readme",
+      extras: [
+        "README.md": [title: "Introduction"],
+        "CHANGELOG.md": [title: "Changelog"],
+        "guides/configuration.md": [title: "Configuration"],
+        "guides/contracts.md": [title: "Contracts"],
+        "guides/transactions.md": [title: "Transactions"]
+      ],
+      source_url: @source_url,
+      source_ref: source_ref,
+      # groups_for_modules: [
+      #   Client: [
+      #     ~r/^VeChain\.Client\.[A-Za-z0-9.]+$/
+      #   ],
+      #   Contracts: [
+      #     ~r/^VeChain\.Contracts\.[A-Za-z0-9.]+$/
+      #   ]
+      # ],
+      markdown_processor: {ExDoc.Markdown.Earmark, footnotes: true}
+    ]
+  end
+
+  def dialyzer do
+    [flags: [:error_handling, :extra_return, :underspecs, :unknown, :unmatched_returns]]
   end
 
   # Run "mix help deps" to learn about dependencies.
