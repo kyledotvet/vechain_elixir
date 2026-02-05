@@ -2,7 +2,7 @@ defmodule VeChain.Block do
   @moduledoc """
   Represents a VeChain block with its associated fields.
   """
-  alias VeChain.Types
+  alias Ethers.Types
   alias VeChain.Utils
 
   defstruct [
@@ -91,6 +91,10 @@ defmodule VeChain.Block do
       is_finalized: is_finalized,
       transactions: transactions
     }
+  end
+
+  def get_block_ref(%__MODULE__{id: <<first_8::binary-size(8), _rest::binary>>}) do
+    first_8
   end
 
   defimpl Inspect do
