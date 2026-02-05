@@ -90,6 +90,14 @@ defmodule VeChain.Utils do
   def maybe_hex_decode(hex), do: hex_decode!(hex)
 
   @doc """
+  Encodes an address to hex, returns nil if input is nil.
+  """
+  @spec maybe_encode_address(Types.t_address() | nil) :: String.t() | nil
+  def maybe_encode_address(nil), do: nil
+  def maybe_encode_address(<<>>), do: nil
+  def maybe_encode_address(<<addr::binary-size(20)>>), do: encode_address!(addr)
+
+  @doc """
   Generates a transaction nonce.
 
   VeChain uses deterministic nonce generation based on timestamp and randomness.
@@ -114,4 +122,19 @@ defmodule VeChain.Utils do
     # Combine timestamp and random for uniqueness
     rem(timestamp * 1000 + random, 0xFFFFFFFFFFFFFFFF)
   end
+
+  @spec decompress_block_ref(binary()) :: binary()
+  def decompress_block_ref(binary) when byte_size(binary) >= 8, do: binary
+
+  def decompress_block_ref(binary) when byte_size(binary) < 8,
+    do: decompress_block_ref(<<0, binary::binary>>)
+
+  @spec nullable_hex_encode(binary() | nil) :: String.t() | nil
+  def nullable_hex_encode(<<>>), do: nil
+  def nullable_hex_encode(value), do: hex_encode(value)
+
+  @spec drop_leading_zeros(String.t()) :: String.t()
+  def drop_leading_zeros("0x0"), do: "0x0"
+  def drop_leading_zeros("0x0" <> rest), do: drop_leading_zeros("0x" <> rest)
+  def drop_leading_zeros(hex_bin), do: hex_bin
 end
