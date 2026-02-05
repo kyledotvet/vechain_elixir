@@ -2,10 +2,26 @@ defmodule VeChain.Transaction.Reserved do
   @moduledoc """
   TODO: Build this out properly
   """
-  defstruct features: 0,
+  defstruct features: <<>>,
             unused: []
 
-  def to_rlp_list(%__MODULE__{features: 0}) do
+  @type t() :: %__MODULE__{
+          features: binary(),
+          unused: [binary()]
+        }
+
+  def cast([features | unused]) do
+    %__MODULE__{
+      features: features,
+      unused: unused
+    }
+  end
+
+  def cast([]) do
+    %__MODULE__{}
+  end
+
+  def to_rlp_list(%__MODULE__{features: <<>>}) do
     []
   end
 
@@ -19,14 +35,28 @@ defmodule VeChain.Transaction.Reserved do
       |> ExRLP.encode(options)
     end
 
-    defp encode_features(0), do: []
+    defp encode_features(<<>>), do: []
 
     defp encode_features(features) do
       [
         features
+        |> :binary.decode_unsigned()
         |> Bitwise.band(1)
         |> :binary.encode_unsigned()
       ]
+    end
+  end
+
+  defimpl Inspect do
+    alias VeChain.Transaction.Reserved
+
+    def inspect(%Reserved{features: features, unused: unused} = reserved, opts) do
+      %{
+        reserved
+        | features: :binary.decode_unsigned(features),
+          unused: unused
+      }
+      |> Inspect.Any.inspect(opts)
     end
   end
 end
