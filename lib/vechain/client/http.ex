@@ -1,4 +1,4 @@
-defmodule VeChain.Client.Thor do
+defmodule VeChain.Client.Http do
   @moduledoc """
   Thor RESTful API client for VeChainThor blockchain.
 
