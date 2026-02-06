@@ -48,13 +48,11 @@ defmodule VeChain.Transaction.Reserved do
   end
 
   defimpl Inspect do
-    alias VeChain.Transaction.Reserved
-
-    def inspect(%Reserved{features: features, unused: unused} = reserved, opts) do
+    def inspect(reserved, opts) do
       %{
         reserved
-        | features: :binary.decode_unsigned(features),
-          unused: unused
+        | features: :binary.decode_unsigned(reserved.features),
+          unused: reserved.unused
       }
       |> Inspect.Any.inspect(opts)
     end
