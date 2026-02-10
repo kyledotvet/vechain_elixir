@@ -93,7 +93,8 @@ defmodule VeChain.Block do
     }
   end
 
-  def get_block_ref(%__MODULE__{id: <<first_8::binary-size(8), _rest::binary>>}) do
+  @spec get_ref(t()) :: <<_::64>>
+  def get_ref(%__MODULE__{id: <<first_8::binary-size(8), _rest::binary>>}) do
     first_8
   end
 

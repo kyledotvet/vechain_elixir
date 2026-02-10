@@ -10,7 +10,7 @@ defmodule VeChain.Transaction do
   alias VeChain.Transaction.Eip1559
   alias VeChain.Transaction.Clause
   alias VeChain.Transaction.Legacy
-  alias VeChain.Client.Http
+  alias VeChain.Client.Thor
   alias VeChain.Block
   alias VeChain.Utils
   alias Ethers.Types
@@ -37,7 +37,7 @@ defmodule VeChain.Transaction do
     tx_module.new(%{
       # Just mainnet for now during testing
       chain_tag: 0x4A,
-      block_ref: get_best_block_ref(),
+      block_ref: new_best_block_ref(),
       expiration: 32,
       gas: @gas_base_cost,
       max_priority_fee_per_gas: 400_000,
@@ -46,10 +46,10 @@ defmodule VeChain.Transaction do
     })
   end
 
-  defp get_best_block_ref do
-    Http.new("https://sync-mainnet.vechain.org/")
-    |> Http.get_block!("best")
-    |> Block.get_block_ref()
+  defp new_best_block_ref do
+    Thor.new("https://sync-mainnet.vechain.org/")
+    |> Thor.get_block!("best")
+    |> Block.get_ref()
     |> VeChain.Utils.hex_encode(true)
   end
 
@@ -58,6 +58,7 @@ defmodule VeChain.Transaction do
     raw_tx
     |> Utils.hex_decode!()
     |> typed_cast()
+    |> calculate_hash()
   end
 
   def typed_cast(<<0x51::8, rlp_encoded_tx::binary>>) do
@@ -75,7 +76,7 @@ defmodule VeChain.Transaction do
   @spec append_clause(t(), Clause.t()) :: t()
   def append_clause(transaction, clause) do
     %{transaction | clauses: transaction.clauses ++ [clause]}
-    |> recalc_intrinsic_gas()
+    |> calculate_intrinsic_gas()
     |> calculate_hash()
   end
 
@@ -111,7 +112,7 @@ defmodule VeChain.Transaction do
     <<signature::binary, rec_id_int>>
   end
 
-  def recalc_intrinsic_gas(transaction) do
+  def calculate_intrinsic_gas(transaction) do
     %{transaction | gas: calc_gas_for_clauses(transaction.clauses)}
   end
 
@@ -143,8 +144,7 @@ defmodule VeChain.Transaction do
   end
 
   def calculate_hash(transaction) do
-    # TODO: Implement hash recalculation logic
     # Recalculate transaction hash after modifications
-    transaction
+    %{transaction | id: hash(transaction, transaction.origin)}
   end
 end

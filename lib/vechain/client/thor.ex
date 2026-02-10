@@ -1,4 +1,4 @@
-defmodule VeChain.Client.Http do
+defmodule VeChain.Client.Thor do
   @moduledoc """
   Thor RESTful API client for VeChainThor blockchain.
 
@@ -124,14 +124,14 @@ defmodule VeChain.Client.Http do
   ## Examples
 
       iex> {:ok, block} = Thor.get_block(client, "best")
-      iex> is_integer(block["number"])
+      iex> is_integer(block.number)
       true
 
       iex> {:ok, block} = Thor.get_block(client, 12345)
-      iex> block["number"] == 12345
+      iex> block.number == 12345
       true
   """
-  @spec get_block(t(), String.t() | non_neg_integer()) :: {:ok, map()} | {:error, term()}
+  @spec get_block(t(), String.t() | non_neg_integer()) :: {:ok, Block.t()} | {:error, term()}
   def get_block(client, id) do
     client
     |> Req.get(
@@ -160,15 +160,15 @@ defmodule VeChain.Client.Http do
 
   ## Returns
 
-  Block data as a map.
+  Block data as a `VeChain.Block` struct.
 
   ## Examples
 
       iex> block = Thor.get_block!(client, "best")
-      iex> is_integer(block["number"])
+      iex> is_integer(block.number)
       true
   """
-  @spec get_block!(t(), String.t()) :: map()
+  @spec get_block!(t(), String.t() | non_neg_integer()) :: Block.t()
   def get_block!(client, id) do
     case get_block(client, id) do
       {:ok, block} -> block
