@@ -117,7 +117,8 @@ defmodule VeChain.Transaction.Eip1559 do
       # Use the default struct inspection with the prepared fields
       %{
         transaction
-        | chain_tag: :binary.decode_unsigned(transaction.chain_tag),
+        | id: Utils.hex_encode(transaction.id),
+          chain_tag: :binary.decode_unsigned(transaction.chain_tag),
           block_ref: Utils.hex_encode(transaction.block_ref),
           expiration: :binary.decode_unsigned(transaction.expiration),
           max_priority_fee_per_gas: Utils.hex_encode(transaction.max_priority_fee_per_gas),

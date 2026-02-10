@@ -20,6 +20,22 @@ defmodule VeChain.Transaction.Legacy do
     reserved: %Reserved{}
   ]
 
+  @type t() :: %__MODULE__{
+          id: binary() | nil,
+          chain_tag: binary(),
+          block_ref: binary(),
+          expiration: binary(),
+          gas_price_coef: binary(),
+          gas: binary(),
+          depends_on: binary() | nil,
+          nonce: binary(),
+          signature: binary() | nil,
+          origin: binary() | nil,
+          delegator: binary() | nil,
+          clauses: [Clause.t()],
+          reserved: Reserved.t()
+        }
+
   def new(%{max_fee_per_gas: _anything}),
     do: raise(ArgumentError, "Legacy transactions do not use max_fee_per_gas")
 
@@ -94,7 +110,8 @@ defmodule VeChain.Transaction.Legacy do
       # Use the default struct inspection with the prepared fields
       %{
         transaction
-        | chain_tag: :binary.decode_unsigned(transaction.chain_tag),
+        | id: Utils.hex_encode(transaction.id),
+          chain_tag: :binary.decode_unsigned(transaction.chain_tag),
           block_ref: Utils.hex_encode(transaction.block_ref),
           expiration: :binary.decode_unsigned(transaction.expiration),
           gas_price_coef: :binary.decode_unsigned(transaction.gas_price_coef),
