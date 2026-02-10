@@ -60,6 +60,21 @@ defmodule VeChain.Transaction.Clause do
     }
   end
 
+  @spec vet_transfer(Types.t_address(), non_neg_integer()) :: t()
+  def vet_transfer("0x" <> _rest = to_address, amount_in_wei) do
+    to_address
+    |> Utils.decode_address!()
+    |> vet_transfer(amount_in_wei)
+  end
+
+  def vet_transfer(to_address, amount_in_wei) do
+    %__MODULE__{
+      to: to_address,
+      value: encode_value(amount_in_wei),
+      data: <<>>
+    }
+  end
+
   def to_rlp_list(%__MODULE__{to: to, value: value, data: data}) do
     [
       to,
