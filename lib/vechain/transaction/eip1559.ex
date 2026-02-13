@@ -1,7 +1,15 @@
 defmodule VeChain.Transaction.Eip1559 do
+  @moduledoc """
+  Module representing EIP-1559 (Dynamic Gas Fee) transactions on the VeChain blockchain.
+
+  This struct and its associated functions handle the specific fields and encoding logic for EIP-1559 transactions, which include dynamic fee fields like `max_priority_fee_per_gas` and `max_fee_per_gas`. The module also implements the necessary protocols for RLP encoding and inspection.
+
+  Most users will interact with this module indirectly through `VeChain.Transaction`, which will determine the appropriate behavior based on the struct and configuration.
+  """
   alias VeChain.Transaction.Clause
   alias VeChain.Transaction.Reserved
   alias VeChain.Transaction.Signature
+  alias VeChain.Transaction
   alias VeChain.Utils
 
   defstruct [
@@ -22,30 +30,40 @@ defmodule VeChain.Transaction.Eip1559 do
   ]
 
   @type t() :: %__MODULE__{
-          id: binary() | nil,
-          chain_tag: binary(),
-          block_ref: binary(),
-          expiration: binary(),
+          id: Transaction.id(),
+          chain_tag: Transaction.chain_tag(),
+          block_ref: Transaction.block_ref(),
+          expiration: Transaction.expiration(),
           max_priority_fee_per_gas: binary(),
           max_fee_per_gas: binary(),
-          gas: binary(),
-          depends_on: binary() | nil,
-          nonce: binary(),
-          signature: binary() | nil,
-          origin: binary() | nil,
-          delegator: binary() | nil,
-          clauses: [Clause.t()],
+          gas: Transaction.gas(),
+          depends_on: Transaction.depends_on(),
+          nonce: Transaction.nonce(),
+          signature: Transaction.signature(),
+          origin: Transaction.origin(),
+          delegator: Transaction.delegator(),
+          clauses: Transaction.clauses(),
           reserved: Reserved.t()
         }
 
+  @doc """
+  Creates a new EIP-1559 transaction struct based on passed in attributes. The expectation is that the attributes are coming from `VeChain.Transaction.new/1` and have already been validated and transformed into the correct format (binary). Odds are good that if you are calling this function directly, you may be doing something wrong.
+
+  Raises if unsupported fields are provided.
+  """
   def new(%{gas_price_coef: _anything}),
     do: raise(ArgumentError, "EIP-1559 transactions do not use gas_price_coef")
 
   def new(attrs) do
-    # TODO: Migrate this to validate attrs and convert to binary
     struct(__MODULE__, attrs)
   end
 
+  @doc """
+  Casts a RLP decoded list into an EIP-1559 transaction struct.
+  This is used internally when decoding raw transactions from the blockchain.
+
+  Ref: `VeChain.Transaction.typed_cast/1`
+  """
   def cast([
         chain_tag,
         block_ref,
@@ -74,9 +92,13 @@ defmodule VeChain.Transaction.Eip1559 do
     |> Signature.maybe_parse()
   end
 
+  @doc """
+  Converts an EIP-1559 transaction struct into a list format suitable for RLP encoding. This is used internally when encoding transactions to be sent to the blockchain.
+
+  Everything is stored in the struct as binary so we can just return the fields with minimal processing in the correct order for RLP encoding
+  """
+  @spec to_rlp_list(t()) :: list()
   def to_rlp_list(tx) do
-    # Everything is "stored" in the struct as binary so we can just
-    # return the fields in the correct order for RLP encoding
     [
       tx.chain_tag,
       Utils.remove_leading_zeros(tx.block_ref),
