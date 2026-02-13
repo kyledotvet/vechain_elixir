@@ -1,31 +1,22 @@
-# VeChain SDK for Elixir
+# VeChain Elixir SDK
 
-A comprehensive Elixir SDK for interacting with the VeChainThor blockchain. Built with a composable architecture inspired by the `Req` HTTP client, this SDK provides three levels of API for maximum flexibility and ease of use.
+A comprehensive Elixir SDK for interacting with the VeChainThor blockchain. Built with a composable architecture inspired by the `Req` HTTP client, this SDK provides multiple levels of API for maximum flexibility when needed and ease of use out of the box.
 
-## Features
+## Current Status
 
-- 🔗 **Three-level API design**: High-level convenience, mid-level composability, low-level control
-- ⚡ **Multi-clause atomic transactions**: Execute multiple operations in a single transaction
-- 💸 **VIP-191 fee delegation**: Native support for designated gas payer
-- 🔐 **Complete cryptographic operations**: Blake2b hashing, Secp256k1 signing
-- 📦 **Built-in contract support**: VTHO, Energy, Params, Executor, Extension
-- 🎯 **Type-safe ABI encoding/decoding**: Full contract interaction support
-- 🔄 **Transaction encoding/decoding**: Serialize and deserialize VeChain transactions
-- 📡 **Thor RESTful API client**: Complete integration with VeChain nodes
-- 📊 **Telemetry integration**: Monitor transaction lifecycle and performance
-- 🧪 **Comprehensive test coverage**: Unit, property-based, and integration tests
+This SDK is currently in early development. The core data structures and transaction encoding/decoding are implemented, but many features are still in progress. The README is being built out alongside the implementation to provide comprehensive documentation and examples.
 
-## Key Differences from Ethereum
+- [x] [Transaction encoding/decoding](#transaction-encoding-decoding)
+- [x] [Building transactions from clauses](#building-a-transaction)
+- [x] Signing transactions as sender
+- [ ] Reading blockchain data
+- [ ] Signing transactions as a gas payer (VIP-191 fee delegation)
+- [ ] High-level convenience functions for common operations (e.g. transferring VET/VTHO)
+- [ ] Comprehensive test coverage
+- [ ] QoL improvements around Async/OTP patterns for transaction lifecycle management
+- [ ] Telemetry integration for monitoring transaction lifecycle and performance
+- [ ] Detailed documentation and examples
 
-VeChain is EVM-compatible but has significant differences:
-
-- **Transaction structure**: Completely different from Ethereum
-- **Multi-clause transactions**: Multiple operations per transaction (atomic)
-- **Fee delegation (VIP-191)**: Gas payer can differ from transaction sender
-- **Dual-token model**: VET (value) and VTHO (gas)
-- **Blake2b-256 hashing**: Instead of Keccak-256 for transaction hashing
-- **Proof of Authority**: Different consensus mechanism
-- **Deterministic nonce**: Not based on account state like Ethereum
 
 ## Installation
 
@@ -34,436 +25,132 @@ Add `vechain` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:vechain, "~> 0.1.0"}
+    {:vechain, "~> 0.0.1"}
   ]
 end
 ```
 
-## Quick Start
-
-### Transfer VET (High-Level API)
-
-```elixir
-# Simple VET transfer
-{:ok, receipt} = VeChain.transfer_vet(
-  to: "0x7567d83b7b8d80addcb281a71d54fc7b3364ffed",
-  amount: VeChain.Units.vet(10),
-  private_key: private_key,
-  network: :testnet
-)
-
-# Check transaction status
-IO.puts("Transaction ID: #{receipt["meta"]["txID"]}")
-IO.puts("Gas Used: #{receipt["gasUsed"]}")
-IO.puts("Reverted: #{receipt["reverted"]}")
-```
-
-### Transfer VTHO
-
-```elixir
-{:ok, receipt} = VeChain.transfer_vtho(
-  to: "0x7567d83b7b8d80addcb281a71d54fc7b3364ffed",
-  amount: VeChain.Units.vtho(100),
-  private_key: private_key,
-  network: :testnet
-)
-```
-
-### Multi-Clause Transaction (Mid-Level API)
-
-```elixir
-alias VeChain.{Transaction, Clause, Units}
-
-# Create atomic transaction with multiple operations
-{:ok, receipt} =
-  Transaction.new(network: :testnet)
-  |> Transaction.add_clause(
-    Clause.transfer_vet("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed", Units.vet(5))
-  )
-  |> Transaction.add_clause(
-    Clause.transfer_vet("0x1234567890123456789012345678901234567890", Units.vet(3))
-  )
-  |> Transaction.add_clause(
-    Clause.transfer_vtho("0xabcdef0123456789abcdef0123456789abcdef01", Units.vtho(50))
-  )
-  |> Transaction.run()
-  |> Transaction.sign(private_key)
-  |> Transaction.broadcast()
-  |> Transaction.await_receipt()
-```
-
-### Contract Interaction
-
-```elixir
-# Read contract state
-client = VeChain.Client.Thor.new(network: :testnet)
-{:ok, balance} = VeChain.Contracts.VTHO.balance_of(
-  client,
-  "0x7567d83b7b8d80addcb281a71d54fc7b3364ffed"
-)
-
-IO.puts("VTHO Balance: #{VeChain.Units.to_vtho(balance)}")
-
-# Call custom contract
-abi = [
-  %{
-    "name" => "setValue",
-    "type" => "function",
-    "inputs" => [%{"type" => "uint256"}],
-    "outputs" => []
-  }
-]
-
-{:ok, receipt} = VeChain.call_contract(
-  contract: "0x1234567890123456789012345678901234567890",
-  abi: abi,
-  function: "setValue",
-  args: [42],
-  private_key: private_key,
-  network: :testnet
-)
-```
-
-### Deploy Contract
-
-```elixir
-bytecode = "0x608060405234801561001057600080fd5b50..."
-abi = [
-  %{
-    "type" => "constructor",
-    "inputs" => [%{"type" => "uint256"}]
-  }
-]
-
-{:ok, receipt} = VeChain.deploy_contract(
-  bytecode: bytecode,
-  abi: abi,
-  args: [1000],
-  private_key: private_key,
-  network: :testnet
-)
-
-contract_address = receipt["outputs"][0]["contractAddress"]
-IO.puts("Contract deployed at: #{contract_address}")
-```
-
-### Fee Delegation (VIP-191)
-
-```elixir
-# Origin creates and signs transaction
-tx =
-  Transaction.new(network: :testnet)
-  |> Transaction.add_clause(Clause.transfer_vet(recipient, Units.vet(1)))
-  |> Transaction.enable_vip191()
-  |> Transaction.run()
-  |> Transaction.sign(origin_private_key)
-
-# Gas payer co-signs
-tx_with_delegation = Transaction.co_sign(tx, gas_payer_private_key)
-
-# Broadcast
-{:ok, receipt} =
-  tx_with_delegation
-  |> Transaction.broadcast()
-  |> Transaction.await_receipt()
-```
-
-### Low-Level Control
-
-```elixir
-# Manual transaction construction
-alias VeChain.{Transaction, Clause, Reserved}
-
-tx = %Transaction{
-  chain_tag: 0x27,  # Testnet
-  block_ref: <<0, 255, 236, 184, 170, 187, 204, 221>>,
-  expiration: 32,
-  clauses: [
-    %Clause{
-      to: VeChain.Utils.normalize_address("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed"),
-      value: VeChain.Units.vet(1),
-      data: <<>>
-    }
-  ],
-  gas_price_coef: 0,
-  gas: 21000,
-  depends_on: nil,
-  nonce: 12345,
-  reserved: %Reserved{features: 0, unused: []},
-  signature: nil
-}
-
-# Get signing hash
-{:ok, signing_hash} = Transaction.get_signing_hash(tx)
-
-# Sign manually
-{:ok, signature} = VeChain.Crypto.Secp256k1.sign(signing_hash, private_key)
-tx = Transaction.put_signature(tx, signature)
-
-# Encode to RLP
-{:ok, encoded} = Transaction.encode(tx)
-
-# Broadcast
-client = VeChain.Client.Thor.new(network: :testnet)
-{:ok, response} = VeChain.Client.Thor.post_transaction(client, encoded)
-```
-
-## API Design
-
-The SDK provides three levels of API for different use cases:
-
-### High-Level API
-
-Convenient functions with sensible defaults. Best for common operations.
-
-```elixir
-VeChain.transfer_vet(...)
-VeChain.transfer_vtho(...)
-VeChain.call_contract(...)
-VeChain.deploy_contract(...)
-```
-
-### Mid-Level API
-
-Composable transaction building with automatic pipeline steps.
-
-```elixir
-Transaction.new()
-|> Transaction.add_clause(...)
-|> Transaction.run()
-|> Transaction.sign(private_key)
-|> Transaction.broadcast()
-```
-
-### Low-Level API
-
-Manual struct manipulation for advanced use cases.
-
-```elixir
-tx = %Transaction{...}
-|> Transaction.put_chain_tag(...)
-|> Transaction.put_block_ref(...)
-```
-
 ## Configuration
 
-Configure the SDK in your `config/config.exs`:
-
 ```elixir
 config :vechain,
-  network: :testnet,
-  thor_node_url: "https://testnet.veblocks.net",
+  network: :mainnet,
+  thor_node_url: "https://sync-mainnet.vechain.org/",
   default_expiration: 32,
-  default_gas_price_coef: 0,
-  telemetry_enabled: true
+  default_gas_margin: 0.1,
+  default_max_fee_per_gas: 0,
+  default_max_priority_fee_per_gas: 0
 ```
 
-Environment-specific configuration in `config/runtime.exs`:
+## Understanding Clauses
 
-```elixir
-config :vechain,
-  thor_node_url: System.get_env("VECHAIN_NODE_URL") || "https://testnet.veblocks.net"
+The handling of transaction clauses is core to VeChain and therefore the SDK as well. Translating desired contract calls to VeChain transaction clauses leverages the work done in the [`elixir_ethers` library](https://hexdocs.pm/ethers) around ABI encoding. Each clause in a VeChain transaction can represent a call to a contract function, and the SDK provides utilities to construct these clauses from their ABI definitions.
+
+### Example: Building a Clause from an ABI-Loaded Contract Function
+
+```json
+# path/to/my_contract_abi.json
+[
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_to",
+        "type": "address"
+      },
+      {
+        "name": "_amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "transfer",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]
 ```
 
-## Networks
-
-### Mainnet
-
 ```elixir
-config :vechain, network: :mainnet
+defmodule MyContract do
+  use VeChain.Contract,
+    abi_file: "path/to/my_contract_abi.json",
+    default_address: "0x1234567890abcdef1234567890abcdef12345678"
+end
 ```
 
-- Chain Tag: `0x4A`
-- Default Node: `https://mainnet.veblocks.net`
-
-### Testnet
-
 ```elixir
-config :vechain, network: :testnet
+alias VeChain.Transaction
+alias VeChain.Utils
+alias VeChain.Transaction.Clause
+
+transfer_clause =
+  MyContract.transfer("0xabcdef0123456789abcdef0123456789abcdef01", Utils.to_wei(100))
+  |> Clause.from_contract_fn()
+
+Transaction.new()
+|> Transaction.append_clause(transfer_clause)
+# => %VeChain.Transaction.Eip1559{
+#   clauses: [
+#     %VeChain.Transaction.Clause{
+#       to: "0x1234567890abcdef1234567890abcdef12345678",
+#       value: "0x0",
+#       data: "0xa9059cbb0000000..."
+#     }
+#   ],
+#.  ...
+# }
 ```
 
-- Chain Tag: `0x27`
-- Default Node: `https://testnet.veblocks.net`
-- Faucet: https://faucet.vecha.in/
+**Further References:**
+- `VeChain.Transaction.Clause.from_contract_fn/1` - Convert an ABI-loaded function call (`Ethers.TxData`) to a transaction clause
+- `VeChain.Transaction.append_clause/2` - Append a clause to a transaction
+- The [Custom ABIs section](https://hexdocs.pm/ethers/readme.html#custom-abis) of the `elixir_ethers` documentation.
 
-### Solo (Local Development)
+## Building a Transaction
 
-```elixir
-config :vechain, network: :solo
-```
-
-- Chain Tag: `0xA4`
-- Default Node: `http://localhost:8669`
-
-## Telemetry
-
-The SDK emits telemetry events for monitoring and debugging:
+The SDK provides a low-level API for building transactions from scratch, which can then be signed and sent to the network. This allows for maximum flexibility in constructing complex transactions with multiple clauses, fee delegation, and more.
 
 ```elixir
-:telemetry.attach(
-  "vechain-handler",
-  [:vechain, :transaction, :confirmed],
-  fn _event, _measurements, metadata, _config ->
-    IO.puts("Transaction confirmed: #{metadata.receipt["meta"]["txID"]}")
-  end,
-  nil
+transaction = VeChain.Transaction.new(
+  type: :eip1559,
+  network: :mainnet,
+  max_priority_fee_per_gas: 0,
+  max_fee_per_gas: 0,
+  expiration: 32
 )
 ```
 
-Available events:
+## Transaction Encoding/Decoding
 
-- `[:vechain, :transaction, :start | :stop | :exception]`
-- `[:vechain, :transaction, :sign, :start | :stop]`
-- `[:vechain, :transaction, :broadcast, :start | :stop]`
-- `[:vechain, :transaction, :confirmed]`
-- `[:vechain, :contract, :call, :start | :stop]`
-- `[:vechain, :contract, :deploy, :start | :stop]`
-- `[:vechain, :http, :request, :start | :stop | :exception]`
+The SDK provides functions to encode and decode VeChain transactions. These can be raw transaction data from the blockchain or transactions you want to create and sign.
 
-See `VeChain.Telemetry` for full documentation.
-
-## Unit Conversion
+### Decoding an Existing Transaction
 
 ```elixir
-# Convert to wei
-VeChain.Units.vet(1)        # => 1_000_000_000_000_000_000
-VeChain.Units.vtho(100)     # => 100_000_000_000_000_000_000
-VeChain.Units.wei(1000)     # => 1000
+# From https://sync-mainnet.vechain.org/transactions/0x29e08ec9784c33aeb9be99e3ff22ace0f285cbc338933379688b866c06713db0?raw=true
+# Ref: https://vechainstats.com/transaction/0x29e08ec9784c33aeb9be99e3ff22ace0f285cbc338933379688b866c06713db0/
+raw_tx = "0x51f901244a88016da36825315ad964f87af85c940000000000000000000000000000456e6572677980b844095ea7b300000000000000000000000040dc1e247569e4b66b25dda1ae3da6077632d68d0000000000000000000000000000000000000000000000056bc75e2d63100000db9440dc1e247569e4b66b25dda1ae3da6077632d68d80840c43f6d18527b960d782860a9d46cb0f828304a92980843be12077c101b882f0f101b6f8126cd442d54736c71532fda335498dcf59ed1c856d36174a324c9c6572b8355de320b59f0aa3cb122c15bd544374b95c4bd722a6c4232735e8790900190b390cecbadb572cd7862f21c9cb0e27f2b0831554e215ff0660282f6eba124314cd7008ecdd9fab7ab096ea49f9522cc8d751bebef2afc57c2a6c23e46a0601"
 
-# Convert from wei
-VeChain.Units.to_vet(1_000_000_000_000_000_000)   # => 1.0
-VeChain.Units.to_vtho(100_000_000_000_000_000_000) # => 100.0
+transaction = VeChain.Transaction.cast(raw_tx)
+# => %VeChain.Transaction.Eip1559{
+#      id: "0x29e08ec9784c33aeb9be99e3ff22ace0f285cbc338933379688b866c06713db0",
+#      . . .
+#    }
 
-# Format for display
-VeChain.Units.format_vet(1_000_000_000_000_000_000)     # => "1.0 VET"
-VeChain.Units.format_vtho(100_000_000_000_000_000_000)  # => "100.0 VTHO"
+encoded_transaction = transaction
+  |> VeChain.Transaction.encode(include_signature: true)
+  |> VeChain.Utils.hex_encode()
+# => "0x51f901244a88016da36825315ad964f87af85c94000000000..."
 
-# Parse from string
-{:ok, amount} = VeChain.Units.parse_vet("1.5 VET")      # => {:ok, 1_500_000_000_000_000_000}
-{:ok, amount} = VeChain.Units.parse_vtho("50 VTHO")     # => {:ok, 50_000_000_000_000_000_000}
+raw_tx == encoded_transaction
+# => true
 ```
-
-## Address Handling
-
-The SDK uses hex strings with "0x" prefix for all public APIs:
-
-```elixir
-# Addresses are hex strings
-address = "0x7567d83b7b8d80addcb281a71d54fc7b3364ffed"
-
-# Validate address
-VeChain.Utils.valid_address?(address)  # => true
-
-# Checksum address
-VeChain.Utils.checksum_address(address)
-
-# Derive address from private key
-{:ok, address} = VeChain.Crypto.Address.from_private_key(private_key)
-address_hex = VeChain.Utils.encode_address!(address)
-```
-
-## Testing
-
-Run unit tests:
-
-```bash
-mix test
-```
-
-Run integration tests (requires testnet access):
-
-```bash
-mix test --only integration
-```
-
-Run all tests:
-
-```bash
-mix test --include integration
-```
-
-## Documentation
-
-Generate documentation:
-
-```bash
-mix docs
-```
-
-View documentation:
-
-```bash
-open doc/index.html
-```
-
-## Examples
-
-See the `examples/` directory for more comprehensive examples:
-
-- `examples/transfer.exs` - VET and VTHO transfers
-- `examples/multi_clause.exs` - Atomic multi-clause transactions
-- `examples/contract.exs` - Contract deployment and interaction
-- `examples/fee_delegation.exs` - VIP-191 fee delegation
-- `examples/wallet.exs` - HD wallet and mnemonic management
-
-## Migration from JavaScript SDK
-
-If you're familiar with the VeChain JavaScript SDK, here's a quick comparison:
-
-### JavaScript SDK
-
-```javascript
-const transaction = new Transaction({
-  chainTag: 0x27,
-  blockRef: '0x00000000aabbccdd',
-  expiration: 32,
-  clauses: [
-    {
-      to: '0x7567d83b7b8d80addcb281a71d54fc7b3364ffed',
-      value: 1000,
-      data: '0x'
-    }
-  ],
-  gasPriceCoef: 0,
-  gas: 21000,
-  dependsOn: null,
-  nonce: 12345
-});
-
-const signingHash = transaction.signingHash();
-const signature = secp256k1.sign(signingHash, privateKey);
-transaction.signature = signature;
-
-const raw = transaction.encode();
-const response = await thorClient.sendTransaction(raw);
-```
-
-### Elixir SDK
-
-```elixir
-{:ok, receipt} =
-  Transaction.new(chain_tag: 0x27)
-  |> Transaction.put_block_ref(<<0, 0, 0, 0, 0xAA, 0xBB, 0xCC, 0xDD>>)
-  |> Transaction.put_expiration(32)
-  |> Transaction.add_clause(
-    Clause.transfer_vet("0x7567d83b7b8d80addcb281a71d54fc7b3364ffed", 1000)
-  )
-  |> Transaction.put_gas(21000)
-  |> Transaction.put_nonce(12345)
-  |> Transaction.sign(private_key)
-  |> Transaction.broadcast()
-  |> Transaction.await_receipt()
-```
-
-## Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Resources
 
 - [VeChain Documentation](https://docs.vechain.org/)
-- [Thor Wiki](https://github.com/vechain/thor/wiki)
-- [VIP-191 Specification](https://docs.vechain.org/core-concepts/transactions/meta-transaction-features/designated-gas-payer-vip-191)
 - [JavaScript SDK](https://github.com/vechain/vechain-sdk-js)
 - [Block Explorer](https://explore.vechain.org/)
 
@@ -474,5 +161,5 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for gu
 ## Acknowledgments
 
 - Inspired by the [Req](https://github.com/wojtekmach/req) HTTP client
+- Built on top of the excellent [Elixir Ethers](https://github.com/ExWeb3/elixir_ethers) library
 - Built with 💜 for the VeChain community by [kyle.vet](https://kyle.vet)
-- Special thanks to the VeChain Foundation for their documentation and support
