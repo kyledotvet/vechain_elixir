@@ -95,11 +95,11 @@ defmodule VeChain.Transaction.Legacy do
 
   @doc """
   Converts a Legacy transaction struct into a list format suitable for RLP encoding. This is used internally when encoding transactions to be sent to the blockchain.
+
+  Everything is stored in the struct as binary so we can just return the fields with minimal processing in the correct order for RLP encoding
   """
   @spec to_rlp_list(t()) :: list()
   def to_rlp_list(tx) do
-    # Everything is "stored" in the struct as binary so we can just
-    # return the fields in the correct order for RLP encoding
     [
       tx.chain_tag,
       Utils.remove_leading_zeros(tx.block_ref),
