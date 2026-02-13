@@ -10,12 +10,24 @@ defmodule VeChain.Transaction do
   alias VeChain.Transaction.Eip1559
   alias VeChain.Transaction.Clause
   alias VeChain.Transaction.Legacy
-  alias VeChain.Client.Thor
-  alias VeChain.Block
   alias VeChain.Utils
+  alias VeChain.Configuration, as: Config
+  alias VeChain.Transaction.Validation, as: Validate
   alias Ethers.Types
 
   @type t() :: Eip1559.t() | Legacy.t()
+
+  @type id() :: binary() | nil
+  @type chain_tag() :: <<_::8>>
+  @type block_ref() :: <<_::64>>
+  @type expiration() :: binary()
+  @type gas() :: binary()
+  @type depends_on() :: <<_::256>> | nil
+  @type nonce() :: binary()
+  @type signature() :: binary() | nil
+  @type origin() :: Types.t_address() | nil
+  @type delegator() :: Types.t_address() | nil
+  @type clauses() :: [Clause.t()]
 
   @default_transaction_type :eip_1559
 
@@ -30,27 +42,44 @@ defmodule VeChain.Transaction do
   @gas_per_zero_byte 4
   @gas_per_non_zero_byte 68
 
+  @spec new(keyword() | none()) :: t()
   def new(opts \\ []) do
+    # If configuration is provided, use the network configuration provided, if not, default to configuration at the application level, application-level configuration will default to mainnet unless otherwise configured
     transaction_type = Keyword.get(opts, :type, @default_transaction_type)
-    tx_module = Keyword.get(@default_transaction_types, transaction_type)
+    tx_module = Keyword.fetch!(@default_transaction_types, transaction_type)
 
-    tx_module.new(%{
-      # Just mainnet for now during testing
-      chain_tag: 0x4A,
-      block_ref: new_best_block_ref(),
-      expiration: 32,
-      gas: @gas_base_cost,
-      max_priority_fee_per_gas: 400_000,
-      max_fee_per_gas: 400_000,
-      nonce: Keyword.get(opts, :nonce, Utils.generate_nonce())
-    })
+    Keyword.get(opts, :network)
+    |> Config.get_network()
+    |> apply_block_ref(opts)
+    |> apply_expiration(opts)
+    |> apply_gas_fields(transaction_type, opts)
+    |> apply_nonce(opts)
+    |> Clause.parse_clauses(opts)
+    |> tx_module.new()
   end
 
-  defp new_best_block_ref do
-    Thor.new("https://sync-mainnet.vechain.org/")
-    |> Thor.get_block!("best")
-    |> Block.get_ref()
-    |> VeChain.Utils.hex_encode(true)
+  def apply_block_ref(config, opts) do
+    config
+    |> Config.get_block_ref(opts)
+    |> Validate.block_ref()
+  end
+
+  def apply_expiration(config, opts) do
+    config
+    |> Config.get_expiration(opts)
+    |> Validate.expiration()
+  end
+
+  def apply_gas_fields(config, transaction_type, opts) do
+    config
+    |> Config.get_gas_fields(transaction_type, opts)
+    |> Validate.gas_fields(transaction_type)
+  end
+
+  def apply_nonce(config, opts) do
+    config
+    |> Config.get_nonce(opts)
+    |> Validate.nonce()
   end
 
   @spec cast(binary()) :: t()
@@ -73,6 +102,20 @@ defmodule VeChain.Transaction do
     |> Legacy.cast()
   end
 
+  def sign_as_sender(transaction, private_key) do
+    # TODO: Validate that this is correct
+    transaction
+    |> sign_transaction_as_sender(private_key)
+    |> calculate_hash()
+  end
+
+  # def sign_as_gas_payer(transaction, private_key) do
+  #   # TODO: Implement fee delegation signing logic
+  #   transaction
+  #   |> sign_transaction_as_gas_payer(private_key)
+  #   |> calculate_hash()
+  # end
+
   @spec append_clause(t(), Clause.t()) :: t()
   def append_clause(transaction, clause) do
     %{transaction | clauses: transaction.clauses ++ [clause]}
@@ -82,6 +125,13 @@ defmodule VeChain.Transaction do
 
   @spec encode(t(), keyword()) :: binary()
   def encode(transaction, options \\ []), do: ExRLP.encode(transaction, options)
+
+  @spec hex_encode(t(), keyword()) :: binary()
+  def hex_encode(transaction, options \\ []) do
+    transaction
+    |> encode(options)
+    |> Utils.hex_encode()
+  end
 
   @spec hash(t(), Types.t_address() | nil) :: binary()
   def hash(transaction, sender \\ nil)
@@ -100,6 +150,11 @@ defmodule VeChain.Transaction do
   def sign_transaction_as_sender(transaction, private_key) do
     %{transaction | signature: get_transaction_signature(transaction, private_key)}
   end
+
+  # def sign_transaction_as_gas_payer(transaction, private_key) do
+  #   # TODO: Implement fee delegation signing logic
+  #   %{transaction | signature: get_transaction_signature(transaction, private_key)}
+  # end
 
   def get_transaction_signature(transaction, private_key) do
     transaction
