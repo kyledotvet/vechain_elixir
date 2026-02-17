@@ -4,6 +4,5 @@ defmodule VeChain.AddressFixture do
   """
   def random_address do
     :crypto.strong_rand_bytes(20)
-    |> VeChain.Utils.hex_encode(true)
   end
 end
