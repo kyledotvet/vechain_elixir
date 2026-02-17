@@ -25,10 +25,10 @@ defmodule VeChain.Client.Thor do
   """
 
   alias VeChain.Block
-  alias VeChain.Network
-  alias VeChain.Types
+  alias Ethers.Types
   alias VeChain.Utils
   alias VeChain.Transaction
+  alias VeChain.Configuration
 
   @type t :: Req.Request.t()
 
@@ -55,53 +55,19 @@ defmodule VeChain.Client.Thor do
       true
   """
   @spec new(String.t(), keyword()) :: t()
-  def new(base_url, opts \\ []) do
-    Req.new([base_url: base_url] ++ opts)
-    |> Req.Request.put_header("content-type", "application/json")
-    |> Req.Request.put_header("accept", "application/json")
-  end
-
-  @doc """
-  Creates a default Thor client based on application configuration.
-
-  Reads the `:thor_node_url` from application config or uses testnet as default.
-
-  ## Returns
-
-  A Req request struct configured for the default Thor node.
-
-  ## Examples
-
-      iex> client = Thor.default_client()
-      iex> is_struct(client, Req.Request)
-      true
-  """
-  @spec default_client() :: t()
-  def default_client do
-    base_url = Application.get_env(:vechain, :thor_node_url, Network.default_node(:testnet))
-    new(base_url)
-  end
-
-  @doc """
-  Creates a client for a specific network.
-
-  ## Parameters
-
-    * `network` - Network identifier (`:mainnet`, `:testnet`, `:solo`)
-
-  ## Returns
-
-  A Req request struct configured for the network's default node.
-
-  ## Examples
-
-      iex> client = Thor.client_for(:mainnet)
-      iex> is_struct(client, Req.Request)
-      true
-  """
-  @spec client_for(:mainnet | :testnet | :solo) :: t()
-  def client_for(network) when network in [:mainnet, :testnet, :solo] do
-    new(Network.default_node(network))
+  def new(base_url \\ Configuration.get_thor_node_url(), opts \\ []) do
+    [
+      base_url: base_url,
+      headers: [
+        {"content-type", "application/json"},
+        {"accept", "application/json"}
+      ],
+      retry: :transient,
+      max_retries: 3,
+      receive_timeout: 10_000
+    ]
+    |> Keyword.merge(opts)
+    |> Req.new()
   end
 
   @doc """
@@ -131,23 +97,15 @@ defmodule VeChain.Client.Thor do
       iex> block.number == 12345
       true
   """
-  @spec get_block(t(), String.t() | non_neg_integer()) :: {:ok, Block.t()} | {:error, term()}
-  def get_block(client, id) do
+  @spec get_block(String.t() | non_neg_integer(), t()) :: {:ok, Block.t()} | {:error, term()}
+  def get_block(id, client \\ new()) do
     client
     |> Req.get(
       url: "/blocks/:block_id",
       path_params: [block_id: id]
     )
-    |> case do
-      {:ok, %{status: 200, body: body}} ->
-        {:ok, Block.cast(body)}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    |> handle_response()
+    |> cast_body(&Block.cast/1)
   end
 
   @doc """
@@ -168,12 +126,11 @@ defmodule VeChain.Client.Thor do
       iex> is_integer(block.number)
       true
   """
-  @spec get_block!(t(), String.t() | non_neg_integer()) :: Block.t()
-  def get_block!(client, id) do
-    case get_block(client, id) do
-      {:ok, block} -> block
-      {:error, reason} -> raise "Failed to get block: #{inspect(reason)}"
-    end
+  @spec get_block!(String.t() | non_neg_integer(), t()) :: Block.t()
+  def get_block!(id, client \\ new()) do
+    client
+    |> get_block(id)
+    |> unwrap_or_raise!("Failed to get block")
   end
 
   @doc """
@@ -182,7 +139,7 @@ defmodule VeChain.Client.Thor do
   ## Parameters
 
     * `client` - Thor client
-    * `raw_transaction` - RLP-encoded transaction (binary or hex string with "0x" prefix)
+    * `raw_transaction` - RLP-encoded transaction as a hex string with "0x" prefix.
 
   ## Returns
 
@@ -193,23 +150,14 @@ defmodule VeChain.Client.Thor do
 
       iex> {:ok, response} = Thor.post_transaction(client, "0x0123456789abcdef...")
   """
-  @spec post_transaction(t(), binary() | String.t()) :: {:ok, map()} | {:error, term()}
-  def post_transaction(client, encoded_transaction) do
+  @spec post_transaction(String.t(), t()) :: {:ok, map()} | {:error, term()}
+  def post_transaction(encoded_transaction, client \\ new()) do
     client
     |> Req.post(
       url: "/transactions",
       json: %{"raw" => encoded_transaction}
     )
-    |> case do
-      {:ok, %{status: 200, body: body}} ->
-        {:ok, body}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    |> handle_response()
   end
 
   @doc """
@@ -218,7 +166,7 @@ defmodule VeChain.Client.Thor do
   ## Parameters
 
     * `client` - Thor client
-    * `raw_transaction` - RLP-encoded transaction (binary or hex string)
+    * `raw_transaction` - RLP-encoded transaction as a hex string with "0x" prefix.
 
   ## Returns
 
@@ -231,12 +179,11 @@ defmodule VeChain.Client.Thor do
       iex> String.starts_with?(response["id"], "0x")
       true
   """
-  @spec post_transaction!(t(), binary() | String.t()) :: map()
-  def post_transaction!(client, raw_transaction) do
-    case post_transaction(client, raw_transaction) do
-      {:ok, response} -> response
-      {:error, reason} -> raise "Failed to post transaction: #{inspect(reason)}"
-    end
+  @spec post_transaction!(String.t(), t()) :: map()
+  def post_transaction!(encoded_transaction, client \\ new()) do
+    client
+    |> post_transaction(encoded_transaction)
+    |> unwrap_or_raise!("Failed to post transaction")
   end
 
   @doc """
@@ -259,26 +206,15 @@ defmodule VeChain.Client.Thor do
       iex> is_map(tx)
       true
   """
-  @spec get_transaction(t(), Types.t_hash()) :: {:ok, map() | nil} | {:error, term()}
-  def get_transaction(client, tx_id) do
+  @spec get_transaction(Types.t_hash(), t()) :: {:ok, map() | nil} | {:error, term()}
+  def get_transaction(tx_id, client \\ new()) do
     client
     |> Req.get(
       url: "/transactions/:tx_id",
       path_params: [tx_id: normalize_tx_id(tx_id)]
     )
-    |> case do
-      {:ok, %{status: 200, body: body}} when is_map(body) ->
-        {:ok, Transaction.Response.cast(body)}
-
-      {:ok, %{status: 404}} ->
-        {:ok, nil}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    |> handle_response()
+    |> cast_body(&Transaction.Response.cast/1)
   end
 
   @doc """
@@ -286,12 +222,11 @@ defmodule VeChain.Client.Thor do
 
   Returns `nil` if transaction not found.
   """
-  @spec get_transaction!(t(), String.t()) :: map() | nil
-  def get_transaction!(client, tx_id) do
-    case get_transaction(client, tx_id) do
-      {:ok, tx} -> tx
-      {:error, reason} -> raise "Failed to get transaction: #{inspect(reason)}"
-    end
+  @spec get_transaction!(String.t(), t()) :: map() | nil
+  def get_transaction!(tx_id, client \\ new()) do
+    client
+    |> get_transaction(tx_id)
+    |> unwrap_or_raise!("Failed to get transaction")
   end
 
   @doc """
@@ -326,22 +261,8 @@ defmodule VeChain.Client.Thor do
       url: "/transactions/:tx_id/receipt",
       path_params: [tx_id: normalize_tx_id(tx_id)]
     )
-    |> case do
-      {:ok, %{status: 200, body: nil}} ->
-        {:ok, nil}
-
-      {:ok, %{status: 200, body: body}} when is_map(body) ->
-        {:ok, Transaction.Receipt.cast(body)}
-
-      {:ok, %{status: 404}} ->
-        {:ok, nil}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    |> handle_response()
+    |> cast_body(&Transaction.Receipt.cast/1)
   end
 
   @doc """
@@ -365,98 +286,11 @@ defmodule VeChain.Client.Thor do
       iex> is_map(receipt)
       true
   """
-  @spec get_transaction_receipt!(t(), String.t()) :: map() | nil
-  def get_transaction_receipt!(client, tx_id) do
-    case get_transaction_receipt(client, tx_id) do
-      {:ok, receipt} -> receipt
-      {:error, reason} -> raise "Failed to get transaction receipt: #{inspect(reason)}"
-    end
-  end
-
-  @doc """
-  Calls a contract function (read-only, does not create a transaction).
-
-  This performs a simulated contract call without submitting a transaction.
-  Useful for reading contract state or testing function calls.
-
-  ## Parameters
-
-    * `client` - Thor client
-    * `contract_address` - Contract address (hex string)
-    * `data` - Encoded function call data (hex string or binary)
-    * `opts` - Options:
-      - `:caller` - Caller address (optional, hex string)
-      - `:value` - VET amount to send (optional, integer)
-      - `:gas` - Gas limit (optional, integer)
-      - `:gas_price` - Gas price (optional, string)
-      - `:block` - Block to execute at (optional, "best", "finalized", or block ID)
-
-  ## Returns
-
-    * `{:ok, result}` - Call result with "data" and "reverted" fields
-    * `{:error, reason}` - Error details
-
-  ## Examples
-
-      iex> data = "0x70a08231..." # balanceOf function call
-      iex> {:ok, result} = Thor.call_contract(client, contract_addr, data)
-      iex> result["data"]
-      "0x0000000000000000000000000000000000000000000000000000000000000064"
-  """
-  @spec call_contract(t(), String.t(), binary() | String.t(), keyword()) ::
-          {:ok, map()} | {:error, term()}
-  def call_contract(client, contract_address, data, opts \\ []) do
-    block = Keyword.get(opts, :block, "best")
-    path = "/accounts/#{normalize_address(contract_address)}"
-
-    clause = %{
-      "to" => normalize_address(contract_address),
-      "value" => Keyword.get(opts, :value, "0x0"),
-      "data" => encode_hex(data)
-    }
-
-    body =
-      %{
-        "clauses" => [clause],
-        "gas" => Keyword.get(opts, :gas),
-        "gasPrice" => Keyword.get(opts, :gas_price)
-      }
-      |> maybe_add_caller(opts)
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Map.new()
-
-    case Req.post(client, url: path, json: body, params: [revision: block]) do
-      {:ok, %{status: 200, body: [result | _]}} ->
-        {:ok, result}
-
-      {:ok, %{status: 200, body: body}} when is_map(body) ->
-        {:ok, body}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  @doc """
-  Calls a contract function. Raises on error.
-
-  See `call_contract/4` for details.
-
-  ## Examples
-
-      iex> result = Thor.call_contract!(client, contract_addr, data)
-      iex> is_binary(result["data"])
-      true
-  """
-  @spec call_contract!(t(), String.t(), binary() | String.t(), keyword()) :: map()
-  def call_contract!(client, contract_address, data, opts \\ []) do
-    case call_contract(client, contract_address, data, opts) do
-      {:ok, result} -> result
-      {:error, reason} -> raise "Failed to call contract: #{inspect(reason)}"
-    end
+  @spec get_transaction_receipt!(String.t(), t()) :: map() | nil
+  def get_transaction_receipt!(tx_id, client \\ new()) do
+    client
+    |> get_transaction_receipt(tx_id)
+    |> unwrap_or_raise!("Failed to get transaction receipt")
   end
 
   @doc """
@@ -480,24 +314,15 @@ defmodule VeChain.Client.Thor do
       iex> is_binary(account["balance"])
       true
   """
-  @spec get_account(t(), Types.t_address(), keyword()) :: {:ok, map()} | {:error, term()}
-  def get_account(client, address, opts \\ []) do
+  @spec get_account(Types.t_address(), t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def get_account(address, client \\ new(), opts \\ []) do
     client
     |> Req.get(
       url: "/accounts/:address",
-      path_params: [address: normalize_address(address)],
-      params: [revision: Keyword.get(opts, :block)]
+      path_params: [address: address],
+      params: opts
     )
-    |> case do
-      {:ok, %{status: 200, body: body}} ->
-        {:ok, body}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    |> handle_response()
   end
 
   @doc """
@@ -505,38 +330,45 @@ defmodule VeChain.Client.Thor do
 
   See `get_account/3` for details.
   """
-  @spec get_account!(t(), String.t(), keyword()) :: map()
-  def get_account!(client, address, opts \\ []) do
-    case get_account(client, address, opts) do
-      {:ok, account} -> account
-      {:error, reason} -> raise "Failed to get account: #{inspect(reason)}"
-    end
+  @spec get_account!(String.t(), t(), keyword()) :: map()
+  def get_account!(address, client \\ new(), opts \\ []) do
+    address
+    |> get_account(client, opts)
+    |> unwrap_or_raise!("Failed to get account")
   end
 
   # ========================================
   # Private Helpers
   # ========================================
 
+  # Handle standard HTTP responses with body transformation
+  defp handle_response({:ok, %{status: 200, body: body}}) do
+    {:ok, body}
+  end
+
+  defp handle_response({:ok, %{status: 404}}) do
+    {:ok, nil}
+  end
+
+  defp handle_response({:ok, %{status: status, body: body}}) do
+    {:error, {status, body}}
+  end
+
+  defp handle_response({:error, reason}) do
+    {:error, reason}
+  end
+
+  defp cast_body({:ok, body}, cast_fn) when is_function(cast_fn, 1), do: {:ok, cast_fn.(body)}
+  defp cast_body(response, _cast_fn), do: response
+
+  # Unwrap result tuple, raising on error
+  defp unwrap_or_raise!({:ok, result}, _error_msg), do: result
+
+  defp unwrap_or_raise!({:error, reason}, error_msg) do
+    raise "#{error_msg}: #{inspect(reason)}"
+  end
+
   # Normalize transaction ID
   defp normalize_tx_id("0x" <> _ = tx_id), do: tx_id
   defp normalize_tx_id(tx_id) when is_binary(tx_id), do: Utils.hex_encode(tx_id)
-
-  # Normalize address for URL (ensures 0x prefix)
-  defp normalize_address("0x" <> _ = address), do: address
-  defp normalize_address(address) when is_binary(address), do: "0x" <> address
-
-  # Encode binary to hex string with "0x" prefix
-  defp encode_hex("0x" <> _ = hex), do: hex
-
-  defp encode_hex(binary) when is_binary(binary) do
-    "0x" <> Base.encode16(binary, case: :lower)
-  end
-
-  # Add caller to body if provided
-  defp maybe_add_caller(body, opts) do
-    case Keyword.get(opts, :caller) do
-      nil -> body
-      caller -> Map.put(body, "caller", normalize_address(caller))
-    end
-  end
 end
