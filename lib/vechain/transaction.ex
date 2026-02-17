@@ -54,8 +54,10 @@ defmodule VeChain.Transaction do
     |> apply_expiration(opts)
     |> apply_gas_fields(transaction_type, opts)
     |> apply_nonce(opts)
+    |> apply_depends_on(opts)
     |> Clause.parse_clauses(opts)
     |> tx_module.new()
+    |> calculate_intrinsic_gas()
   end
 
   def apply_block_ref(config, opts) do
@@ -80,6 +82,12 @@ defmodule VeChain.Transaction do
     config
     |> Config.get_nonce(opts)
     |> Validate.nonce()
+  end
+
+  def apply_depends_on(config, opts) do
+    config
+    |> Config.get_depends_on(opts)
+    |> Validate.depends_on()
   end
 
   @spec cast(binary()) :: t()
