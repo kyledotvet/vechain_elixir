@@ -298,4 +298,56 @@ defmodule VeChain.ConfigurationTest do
       assert result.nonce == 100
     end
   end
+
+  describe "get_depends_on/2" do
+    test "uses provided depends_on from opts" do
+      config = %{}
+      tx_id = <<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32>>
+      opts = [depends_on: tx_id]
+
+      result = VeChain.Configuration.get_depends_on(config, opts)
+
+      assert %{depends_on: ^tx_id} = result
+    end
+
+    test "defaults to nil when not provided in opts" do
+      config = %{}
+      opts = []
+
+      result = VeChain.Configuration.get_depends_on(config, opts)
+
+      assert %{depends_on: nil} = result
+    end
+
+    test "accepts explicit nil in opts" do
+      config = %{}
+      opts = [depends_on: nil]
+
+      result = VeChain.Configuration.get_depends_on(config, opts)
+
+      assert %{depends_on: nil} = result
+    end
+
+    test "accepts hex-encoded transaction ID" do
+      config = %{}
+      tx_id_hex = "0x" <> String.duplicate("a", 64)
+      opts = [depends_on: tx_id_hex]
+
+      result = VeChain.Configuration.get_depends_on(config, opts)
+
+      assert %{depends_on: ^tx_id_hex} = result
+    end
+
+    test "preserves other config fields" do
+      config = %{chain_tag: <<0x4A>>, nonce: <<1, 2, 3>>}
+      tx_id = <<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32>>
+      opts = [depends_on: tx_id]
+
+      result = VeChain.Configuration.get_depends_on(config, opts)
+
+      assert result.chain_tag == <<0x4A>>
+      assert result.nonce == <<1, 2, 3>>
+      assert result.depends_on == tx_id
+    end
+  end
 end

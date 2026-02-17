@@ -85,6 +85,14 @@ defmodule VeChain.Configuration do
     Map.put(config, :nonce, Keyword.get(opts, :nonce, Utils.generate_nonce()))
   end
 
+  @spec get_depends_on(map(), keyword()) :: %{
+          :depends_on => binary() | nil,
+          optional(any()) => any()
+        }
+  def get_depends_on(config, opts) do
+    Map.put(config, :depends_on, Keyword.get(opts, :depends_on))
+  end
+
   def get_private_key(config, key_type, opts) do
     config
     |> Map.put(
