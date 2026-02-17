@@ -6,7 +6,7 @@ defmodule VeChain.ClauseFixture do
     attrs
     |> Map.merge(%VeChain.Transaction.Clause{
       to: VeChain.AddressFixture.random_address(),
-      value: 0,
+      value: <<>>,
       data: "0x000000606060"
     })
   end
