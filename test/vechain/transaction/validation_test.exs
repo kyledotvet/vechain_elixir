@@ -552,4 +552,149 @@ defmodule VeChain.Transaction.ValidationTest do
                    end
     end
   end
+
+  describe "depends_on/1" do
+    test "accepts nil depends_on" do
+      config = %{depends_on: nil}
+
+      result = Validation.depends_on(config)
+
+      assert result.depends_on == nil
+    end
+
+    test "accepts 32-byte binary depends_on" do
+      tx_id = <<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32>>
+      config = %{depends_on: tx_id}
+
+      result = Validation.depends_on(config)
+
+      assert result == config
+      assert byte_size(result.depends_on) == 32
+    end
+
+    test "accepts hex-encoded depends_on string with 0x prefix" do
+      tx_id_hex = "0x" <> String.duplicate("a", 64)
+      config = %{depends_on: tx_id_hex}
+
+      result = Validation.depends_on(config)
+
+      assert is_binary(result.depends_on)
+      assert byte_size(result.depends_on) == 32
+    end
+
+    test "accepts hex-encoded depends_on with uppercase letters" do
+      tx_id_hex = "0x" <> String.duplicate("F", 64)
+      config = %{depends_on: tx_id_hex}
+
+      result = Validation.depends_on(config)
+
+      assert byte_size(result.depends_on) == 32
+    end
+
+    test "accepts hex-encoded depends_on with mixed case" do
+      tx_id_hex = "0x" <> String.duplicate("aB", 32)
+      config = %{depends_on: tx_id_hex}
+
+      result = Validation.depends_on(config)
+
+      assert byte_size(result.depends_on) == 32
+    end
+
+    test "preserves other config fields with nil depends_on" do
+      config = %{
+        depends_on: nil,
+        chain_tag: <<0x4A>>,
+        nonce: <<1, 2, 3>>
+      }
+
+      result = Validation.depends_on(config)
+
+      assert result.chain_tag == <<0x4A>>
+      assert result.nonce == <<1, 2, 3>>
+      assert result.depends_on == nil
+    end
+
+    test "preserves other config fields with binary depends_on" do
+      tx_id = <<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32>>
+      config = %{
+        depends_on: tx_id,
+        chain_tag: <<0x4A>>,
+        nonce: <<1, 2, 3>>
+      }
+
+      result = Validation.depends_on(config)
+
+      assert result.chain_tag == <<0x4A>>
+      assert result.nonce == <<1, 2, 3>>
+      assert result.depends_on == tx_id
+    end
+
+    test "raises ArgumentError for depends_on with less than 32 bytes" do
+      config = %{depends_on: <<1, 2, 3>>}
+
+      assert_raise ArgumentError,
+                   "depends_on must be nil or a binary string of 32 bytes (64 hex characters) representing a transaction ID",
+                   fn ->
+                     Validation.depends_on(config)
+                   end
+    end
+
+    test "raises ArgumentError for hex depends_on with less than 32 bytes" do
+      config = %{depends_on: "0x010203"}
+
+      assert_raise ArgumentError,
+                   "depends_on must be nil or a binary string of 32 bytes (64 hex characters) representing a transaction ID",
+                   fn ->
+                     Validation.depends_on(config)
+                   end
+    end
+
+    test "raises ArgumentError for depends_on with more than 32 bytes" do
+      config = %{depends_on: <<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33>>}
+
+      assert_raise ArgumentError,
+                   "depends_on must be nil or a binary string of 32 bytes (64 hex characters) representing a transaction ID",
+                   fn ->
+                     Validation.depends_on(config)
+                   end
+    end
+
+    test "raises ArgumentError for hex depends_on with more than 32 bytes" do
+      config = %{depends_on: "0x" <> String.duplicate("a", 66)}
+
+      assert_raise ArgumentError,
+                   "depends_on must be nil or a binary string of 32 bytes (64 hex characters) representing a transaction ID",
+                   fn ->
+                     Validation.depends_on(config)
+                   end
+    end
+
+    test "raises ArgumentError for empty depends_on" do
+      config = %{depends_on: <<>>}
+
+      assert_raise ArgumentError,
+                   "depends_on must be nil or a binary string of 32 bytes (64 hex characters) representing a transaction ID",
+                   fn ->
+                     Validation.depends_on(config)
+                   end
+    end
+
+    test "raises ArgumentError for non-binary depends_on" do
+      config = %{depends_on: 12345}
+
+      assert_raise ArgumentError,
+                   "depends_on must be nil or a binary string of 32 bytes (64 hex characters) representing a transaction ID",
+                   fn ->
+                     Validation.depends_on(config)
+                   end
+    end
+
+    test "raises ArgumentError for invalid hex string" do
+      config = %{depends_on: "0xinvalidhex"}
+
+      assert_raise ArgumentError, fn ->
+        Validation.depends_on(config)
+      end
+    end
+  end
 end

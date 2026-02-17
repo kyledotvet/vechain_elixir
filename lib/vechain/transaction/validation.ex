@@ -97,4 +97,23 @@ defmodule VeChain.Transaction.Validation do
   defp validate_binary_nonce(_nonce) do
     raise ArgumentError, "Nonce must be a non-negative integer of up to 8 bytes (< 2^64)"
   end
+
+  def depends_on(%{depends_on: nil} = config) do
+    config
+  end
+
+  def depends_on(%{depends_on: "0x" <> _hex = depends_on} = config)
+      when is_binary(depends_on) do
+    depends_on(%{config | depends_on: Utils.hex_decode!(depends_on)})
+  end
+
+  def depends_on(%{depends_on: depends_on} = config)
+      when is_binary(depends_on) and byte_size(depends_on) == 32 do
+    config
+  end
+
+  def depends_on(_config) do
+    raise ArgumentError,
+          "depends_on must be nil or a binary string of 32 bytes (64 hex characters) representing a transaction ID"
+  end
 end
