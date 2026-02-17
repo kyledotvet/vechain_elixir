@@ -19,6 +19,7 @@ defmodule VeChain.MixProject do
       package: package(),
       docs: docs(),
       dialyzer: dialyzer()
+      # usage_rules: usage_rules()
     ]
   end
 
@@ -55,10 +56,10 @@ defmodule VeChain.MixProject do
       main: "readme",
       extras: [
         "README.md": [title: "Introduction"],
-        "CHANGELOG.md": [title: "Changelog"],
-        "guides/configuration.md": [title: "Configuration"],
-        "guides/contracts.md": [title: "Contracts"],
-        "guides/transactions.md": [title: "Transactions"]
+        "CHANGELOG.md": [title: "Changelog"]
+        # "guides/configuration.md": [title: "Configuration"],
+        # "guides/contracts.md": [title: "Contracts"],
+        # "guides/transactions.md": [title: "Transactions"]
       ],
       source_url: @source_url,
       source_ref: source_ref,
@@ -78,6 +79,16 @@ defmodule VeChain.MixProject do
     [flags: [:error_handling, :extra_return, :underspecs, :unknown, :unmatched_returns]]
   end
 
+  # defp usage_rules do
+  #   [
+  #     file: "CLAUDE.md",
+  #     usage_rules: ["usage_rules:all"],
+  #     skills: [
+  #       location: ".claude/skills"
+  #     ]
+  #   ]
+  # end
+
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
@@ -95,6 +106,7 @@ defmodule VeChain.MixProject do
       {:ex_doc, "~> 0.39", only: :dev, runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      # {:usage_rules, "~> 1.1.0", only: [:dev]}
     ]
   end
 end
