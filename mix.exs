@@ -8,7 +8,7 @@ defmodule VeChain.MixProject do
     [
       app: :vechain,
       version: @version,
-      elixir: "~> 1.19",
+      elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       name: "VeChain",
@@ -39,7 +39,6 @@ defmodule VeChain.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      maintainers: ["Kyle DotVet"],
       files: ["lib", "priv", "mix.exs", "README*", "LICENSE*", "CHANGELOG*"]
     ]
   end
