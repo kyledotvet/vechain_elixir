@@ -25,7 +25,7 @@ Add `vechain` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:vechain, "~> 0.0.1"}
+    {:vechain, "~> 0.0.2"}
   ]
 end
 ```
