@@ -1,4 +1,4 @@
-name: End to End Tests
+name: Tests
 
 on:
   push:
@@ -9,57 +9,49 @@ on:
       - main
 
 jobs:
-  e2e-tests:
+  test:
     runs-on: ubuntu-latest
-    # services:
-    #   thor-solo:
-    #     image: ghcr.io/vechain/thor:latest
-    #     ports:
-    #       - 8669:8669
-    #     volumes:
-    #         - ./data:/data/thor
-    #         - ./logs:/var/log/thor
-    #     options: >-
-    #       --health-cmd="wget -q -O- http://127.0.0.1:8669/blocks/1"
-    #       --health-interval=5s
-    #       --health-timeout=20s
-    #       --health-retries=10
-    #       solo --on-demand --api-addr=0.0.0.0:8669 --api-cors=* --txpool-limit-per-account=256 --cache=2048 --api-allowed-tracers=all --verbosity=9 --persist --api-enable-deprecated --api-call-gas-limit=150000000 --gas-limit=150000000 --api-timeout=240000 --hayabusa
-        # command:
-        #   - solo
-        #   - --on-demand # create new block when there is pending transaction
-        #   - --api-addr=0.0.0.0:8669 # Enable remote connections
-        #   - --api-cors=* # comma separated list of domains to accept cross-origin requests to API
-        #   - --txpool-limit-per-account=256 # limit txpool size per account
-        #   - --cache=2048 # megabytes of ram allocated to trie nodes cache
-        #   - --api-allowed-tracers=all
-        #   - --verbosity=9
-        #   - --persist
-        #   - --api-enable-deprecated
-        #   - --api-call-gas-limit=150000000
-        #   - --gas-limit=150000000
-        #   - --api-timeout=240000
-        #   - --hayabusa
-        # healthcheck:
-        #   # We run the health check using standard UNIX tools so we don't have to
-        #   # install additional dependencies in the container.
-        #   test: wget -O- http://127.0.0.1:8669/blocks/1
-        #   interval: 5s
-        #   timeout: 20s
-        #   retries: 10
+
+    strategy:
+      matrix:
+        include:
+          - elixir: '1.19'
+            otp: '28'
+          - elixir: '1.19'
+            otp: '27'
+          - elixir: '1.18'
+            otp: '27'
+          - elixir: '1.18'
+            otp: '26'
+          - elixir: '1.17'
+            otp: '26'
+          - elixir: '1.17'
+            otp: '25'
+
+    name: Test (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
+
     steps:
-      - name: Run Thor Solo Node
-        run: |
-          docker run -d \
-            --name thor-solo \
-            -p 8669:8669 \
-            -v ${{ github.workspace }}/data:/data/thor \
-            -v ${{ github.workspace }}/logs:/var/log/thor \
-            ghcr.io/vechain/thor:latest \
-            solo --on-demand --api-addr=0.0.0.0:8669 --api-cors=* --txpool-limit-per-account=256 --cache=2048 --api-allowed-tracers=all --verbosity=9 --persist --api-enable-deprecated --api-call-gas-limit=150000000 --gas-limit=150000000 --api-timeout=240000 --hayabusa
-      - name: Check that it is running on the docker network
-        run: |
-          docker ps | grep thor-solo
-      - name: Wget Health Check
-        run: |
-          wget -O- http://127.0.0.1:8669/blocks/1
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile
+        run: mix compile --warnings-as-errors
+
+      - name: Run tests
+        run: mix test
