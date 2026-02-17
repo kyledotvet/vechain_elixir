@@ -27,7 +27,6 @@ defmodule VeChain.Client.Thor do
   alias VeChain.Block
   alias Ethers.Types
   alias VeChain.Utils
-  alias VeChain.Transaction
   alias VeChain.Configuration
 
   @type t :: Req.Request.t()
@@ -174,7 +173,7 @@ defmodule VeChain.Client.Thor do
 
   ## Examples
 
-      iex> encoded = Transaction.encode(signed_tx)
+      iex> encoded = VeChain.Transaction.encode(signed_tx)
       iex> response = Thor.post_transaction!(client, encoded)
       iex> String.starts_with?(response["id"], "0x")
       true
@@ -214,7 +213,6 @@ defmodule VeChain.Client.Thor do
       path_params: [tx_id: normalize_tx_id(tx_id)]
     )
     |> handle_response()
-    |> cast_body(&Transaction.Response.cast/1)
   end
 
   @doc """
@@ -262,7 +260,6 @@ defmodule VeChain.Client.Thor do
       path_params: [tx_id: normalize_tx_id(tx_id)]
     )
     |> handle_response()
-    |> cast_body(&Transaction.Receipt.cast/1)
   end
 
   @doc """
