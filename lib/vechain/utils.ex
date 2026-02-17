@@ -63,7 +63,7 @@ defmodule VeChain.Utils do
   ## Examples
 
       iex> VeChain.Utils.hex_encode("VeChain_ex")
-      "0x6574686572735f6578"
+      "0x5665436861696e5f6578"
   """
   @spec hex_encode(binary() | nil, boolean()) :: String.t()
   def hex_encode(bin, include_prefix \\ true)
