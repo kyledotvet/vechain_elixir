@@ -11,19 +11,41 @@ defmodule VeChain.TransactionTest do
     test "appends a clause to the transaction" do
       initial_clause = clause_fixture()
       new_clause = clause_fixture()
-      transaction = %VeChain.Transaction.Eip1559{clauses: [initial_clause]}
 
-      assert Transaction.append_clause(transaction, new_clause) == %VeChain.Transaction.Eip1559{
-               gas: 38904,
-               clauses: [initial_clause, new_clause]
-             }
+      transaction = %VeChain.Transaction.Eip1559{
+        chain_tag: <<0x4A>>,
+        block_ref: <<0, 0, 0, 0, 0, 0, 0, 1>>,
+        expiration: <<100>>,
+        max_priority_fee_per_gas: <<0>>,
+        max_fee_per_gas: <<0>>,
+        gas: <<0>>,
+        nonce: <<0>>,
+        depends_on: <<>>,
+        clauses: [initial_clause]
+      }
+
+      result = Transaction.append_clause(transaction, new_clause)
+
+      assert result.gas == :binary.encode_unsigned(38904)
+      assert result.clauses == [initial_clause, new_clause]
     end
 
     test "appends multiple clauses correctly" do
       clause1 = clause_fixture()
       clause2 = clause_fixture()
       clause3 = clause_fixture()
-      transaction = %VeChain.Transaction.Eip1559{clauses: [clause1]}
+
+      transaction = %VeChain.Transaction.Eip1559{
+        chain_tag: <<0x4A>>,
+        block_ref: <<0, 0, 0, 0, 0, 0, 0, 1>>,
+        expiration: <<100>>,
+        max_priority_fee_per_gas: <<0>>,
+        max_fee_per_gas: <<0>>,
+        gas: <<0>>,
+        nonce: <<0>>,
+        depends_on: <<>>,
+        clauses: [clause1]
+      }
 
       transaction =
         transaction
@@ -45,7 +67,10 @@ defmodule VeChain.TransactionTest do
       decoded_tx = Transaction.cast(raw_tx)
 
       assert decoded_tx == %VeChain.Transaction.Eip1559{
-               id: nil,
+               id:
+                 <<0x29, 0xE0, 0x8E, 0xC9, 0x78, 0x4C, 0x33, 0xAE, 0xB9, 0xBE, 0x99, 0xE3, 0xFF,
+                   0x22, 0xAC, 0xE0, 0xF2, 0x85, 0xCB, 0xC3, 0x38, 0x93, 0x33, 0x79, 0x68, 0x8B,
+                   0x86, 0x6C, 0x06, 0x71, 0x3D, 0xB0>>,
                chain_tag: <<0x4A>>,
                block_ref: <<1, 109, 163, 104, 37, 49, 90, 217>>,
                expiration: <<100>>,
