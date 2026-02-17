@@ -36,8 +36,15 @@ defmodule VeChain.Transaction.Reserved do
     end
 
     defp encode_features(<<>>), do: []
+    defp encode_features(0), do: []
 
-    defp encode_features(features) do
+    defp encode_features(features) when is_integer(features) do
+      features
+      |> :binary.encode_unsigned()
+      |> encode_features()
+    end
+
+    defp encode_features(features) when is_binary(features) do
       [
         features
         |> :binary.decode_unsigned()
