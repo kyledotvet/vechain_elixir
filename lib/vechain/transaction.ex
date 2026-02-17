@@ -175,6 +175,7 @@ defmodule VeChain.Transaction do
     Enum.reduce(clauses, @gas_base_cost, fn clause, acc ->
       acc + calc_gas_for_clause(clause)
     end)
+    |> :binary.encode_unsigned()
   end
 
   def calc_gas_for_clause(%Clause{to: nil, data: data}) do
