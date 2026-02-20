@@ -75,11 +75,14 @@ defmodule VeChain.Utils do
     do: if(include_prefix, do: "0x", else: "") <> Base.encode16(bin, case: :lower)
 
   @doc """
-  Decodes hex to binary, returns nil if input is nil.
+  Decodes hex to binary, returns nil if input is an empty binary or nil.
 
   ## Examples
 
       iex> VeChain.Utils.maybe_hex_decode(nil)
+      nil
+
+      iex> VeChain.Utils.maybe_hex_decode(<<>>)
       nil
 
       iex> VeChain.Utils.maybe_hex_decode("0x1234")
@@ -87,6 +90,7 @@ defmodule VeChain.Utils do
   """
   @spec maybe_hex_decode(String.t() | nil) :: binary() | nil
   def maybe_hex_decode(nil), do: nil
+  def maybe_hex_decode(<<>>), do: nil
   def maybe_hex_decode(hex), do: hex_decode!(hex)
 
   @doc """

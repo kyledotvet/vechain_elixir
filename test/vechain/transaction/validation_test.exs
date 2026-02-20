@@ -559,7 +559,7 @@ defmodule VeChain.Transaction.ValidationTest do
 
       result = Validation.depends_on(config)
 
-      assert result.depends_on == nil
+      assert result.depends_on == <<>>
     end
 
     test "accepts 32-byte binary depends_on" do
@@ -611,7 +611,7 @@ defmodule VeChain.Transaction.ValidationTest do
 
       assert result.chain_tag == <<0x4A>>
       assert result.nonce == <<1, 2, 3>>
-      assert result.depends_on == nil
+      assert result.depends_on == <<>>
     end
 
     test "preserves other config fields with binary depends_on" do

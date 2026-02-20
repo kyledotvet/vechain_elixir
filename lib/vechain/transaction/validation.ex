@@ -99,7 +99,7 @@ defmodule VeChain.Transaction.Validation do
   end
 
   def depends_on(%{depends_on: nil} = config) do
-    config
+    %{config | depends_on: <<>>}
   end
 
   def depends_on(%{depends_on: "0x" <> _hex = depends_on} = config)
