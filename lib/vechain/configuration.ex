@@ -80,6 +80,21 @@ defmodule VeChain.Configuration do
     raise ArgumentError, "Unsupported transaction type: #{inspect(transaction_type)}"
   end
 
+  @spec get_gas_margin() :: float()
+  def get_gas_margin() do
+    # Equivalent of a 20% gas margin, can be configured at the application level, defaults to 1.2 (20% margin)
+    Application.get_env(:vechain, :gas_margin, 1.2)
+    |> ensure_positive_float()
+  end
+
+  defp ensure_positive_float(value) when is_float(value) and value > 1.0 do
+    value
+  end
+
+  defp ensure_positive_float(_value) do
+    raise ArgumentError, "Gas margin must be a positive float greater than 1"
+  end
+
   @spec get_nonce(map(), keyword()) :: %{:nonce => any(), optional(any()) => any()}
   def get_nonce(config, opts) do
     Map.put(config, :nonce, Keyword.get(opts, :nonce, Utils.generate_nonce()))
