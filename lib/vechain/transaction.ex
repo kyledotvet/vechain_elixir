@@ -10,6 +10,7 @@ defmodule VeChain.Transaction do
   alias VeChain.Transaction.Eip1559
   alias VeChain.Transaction.Clause
   alias VeChain.Transaction.Legacy
+  alias VeChain.Transaction.Signature
   alias VeChain.Utils
   alias VeChain.Configuration, as: Config
   alias VeChain.Transaction.Validation, as: Validate
@@ -36,12 +37,6 @@ defmodule VeChain.Transaction do
     legacy: Legacy
   ]
 
-  @gas_base_cost 5_000
-  @gas_per_clause 16_000
-  @gas_per_contract_creation_clause 48_000
-  @gas_per_zero_byte 4
-  @gas_per_non_zero_byte 68
-
   @spec new(keyword() | none()) :: t()
   def new(opts \\ []) do
     # If configuration is provided, use the network configuration provided, if not, default to configuration at the application level, application-level configuration will default to mainnet unless otherwise configured
@@ -57,7 +52,7 @@ defmodule VeChain.Transaction do
     |> apply_depends_on(opts)
     |> Clause.parse_clauses(opts)
     |> tx_module.new()
-    |> calculate_intrinsic_gas()
+    |> apply_intrinsic_gas()
   end
 
   def apply_block_ref(config, opts) do
@@ -111,7 +106,6 @@ defmodule VeChain.Transaction do
   end
 
   def sign_as_sender(transaction, private_key) do
-    # TODO: Validate that this is correct
     transaction
     |> sign_transaction_as_sender(private_key)
     |> calculate_hash()
@@ -127,7 +121,7 @@ defmodule VeChain.Transaction do
   @spec append_clause(t(), Clause.t()) :: t()
   def append_clause(transaction, clause) do
     %{transaction | clauses: transaction.clauses ++ [clause]}
-    |> calculate_intrinsic_gas()
+    |> apply_intrinsic_gas()
     |> calculate_hash()
   end
 
@@ -156,17 +150,30 @@ defmodule VeChain.Transaction do
   end
 
   def sign_transaction_as_sender(transaction, private_key) do
-    %{transaction | signature: get_transaction_signature(transaction, private_key)}
+    %{
+      transaction
+      | signature: generate_transaction_signature(transaction, private_key),
+        origin: get_address_from_private_key(private_key)
+    }
   end
 
-  # def sign_transaction_as_gas_payer(transaction, private_key) do
-  #   # TODO: Implement fee delegation signing logic
-  #   %{transaction | signature: get_transaction_signature(transaction, private_key)}
-  # end
+  defp get_address_from_private_key(private_key) do
+    {:ok, public_key} = ExSecp256k1.create_public_key(private_key)
+    Signature.derive_address_from_public_key(public_key)
+  end
 
-  def get_transaction_signature(transaction, private_key) do
+  def sign_transaction_as_gas_payer(transaction, private_key) do
+    # TODO: Implement fee delegation signing logic
+    %{
+      transaction
+      | signature: generate_transaction_signature(transaction, private_key),
+        delegator: get_address_from_private_key(private_key)
+    }
+  end
+
+  def generate_transaction_signature(%{origin: sender} = transaction, private_key) do
     transaction
-    |> hash()
+    |> hash(sender)
     |> sign_transaction_hash(private_key)
   end
 
@@ -175,40 +182,22 @@ defmodule VeChain.Transaction do
     <<signature::binary, rec_id_int>>
   end
 
-  def calculate_intrinsic_gas(transaction) do
-    %{transaction | gas: calc_gas_for_clauses(transaction.clauses)}
+  def apply_intrinsic_gas(transaction) do
+    %{transaction | gas: get_intrinsic_gas(transaction.clauses)}
   end
 
-  def calc_gas_for_clauses(clauses) do
-    Enum.reduce(clauses, @gas_base_cost, fn clause, acc ->
-      acc + calc_gas_for_clause(clause)
-    end)
+  def get_intrinsic_gas(clauses) do
+    clauses
+    |> Clause.GasCalculator.calculate_intrinsic_gas()
     |> :binary.encode_unsigned()
   end
 
-  def calc_gas_for_clause(%Clause{to: nil, data: data}) do
-    # Contract creation clause
-    @gas_per_contract_creation_clause + calculate_data_gas(data)
+  def calculate_hash(%{signature: nil} = transaction) do
+    transaction
   end
 
-  def calc_gas_for_clause(%Clause{data: data}) do
-    # Regular clause
-    @gas_per_clause + calculate_data_gas(data)
-  end
-
-  def calculate_data_gas(data, acc \\ 0)
-  def calculate_data_gas(<<>>, acc), do: acc
-
-  def calculate_data_gas(<<0, rest::binary>>, acc) do
-    calculate_data_gas(rest, acc + @gas_per_zero_byte)
-  end
-
-  def calculate_data_gas(<<_non_zero_byte::binary-size(1), rest::binary>>, acc) do
-    calculate_data_gas(rest, acc + @gas_per_non_zero_byte)
-  end
-
-  def calculate_hash(transaction) do
+  def calculate_hash(%{origin: sender} = transaction) when not is_nil(sender) do
     # Recalculate transaction hash after modifications
-    %{transaction | id: hash(transaction, transaction.origin)}
+    %{transaction | id: hash(transaction, sender)}
   end
 end

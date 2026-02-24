@@ -54,9 +54,6 @@ defmodule VeChain.TransactionTest do
 
       assert transaction.clauses == [clause1, clause2, clause3]
     end
-
-    test "recalculates gas and hash after appending clause" do
-    end
   end
 
   describe "cast/1" do
